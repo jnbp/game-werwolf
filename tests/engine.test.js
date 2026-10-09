@@ -35,6 +35,7 @@ function night(s, choices = {}) {
     const c = choices[cur.id];
     let v = null;
     if (cur.def.kind === 'pick') v = (c || []).map(n => id(s, n));
+    else if (cur.def.kind === 'draw') v = c || null;
     else if (cur.def.kind === 'yesno') v = !!c;
     else if (cur.def.kind === 'hexe') v = { heal: !!(c && c.heal), poison: c && c.poison ? id(s, c.poison) : null };
     W.submitStep(s, v);
@@ -292,6 +293,55 @@ function lynchByName(s, n) { s.round = Math.max(1, s.round); W.toDay(s); if (s.s
   W.submitStep(s, null);
   check('Auto: night continues after the round', W.currentStep(s) && W.currentStep(s).id !== 'liebende');
 
+  // wolf cub: the pack takes two victims the night after its death
+  s = game({ A: 'werwolf', B: 'babywolf', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner', G: 'dorfbewohner', H: 'dorfbewohner' });
+  lynchByName(s, 'B');
+  check('Wolf cub: rage noted', s.p.wolfRage === true);
+  W.endDay(s);
+  while (W.currentStep(s).id !== 'werwoelfe') W.submitStep(s, null);
+  check('Wolf cub: two victims allowed', W.currentStep(s).count === 2 && W.currentStep(s).info.k === 'info.wolvesRage');
+  W.submitStep(s, [id(s, 'C'), id(s, 'D')]);
+  while (s.screen === 'night') W.submitStep(s, null);
+  check('Wolf cub: both victims die', !isAlive(s, 'C') && !isAlive(s, 'D'));
+  W.toDay(s); W.noLynch(s); W.endDay(s);
+  while (W.currentStep(s).id !== 'werwoelfe') W.submitStep(s, null);
+  check('Wolf cub: rage lasts one night', W.currentStep(s).count === 1);
+
+  // monk: holy water kills a werewolf …
+  s = game({ A: 'werwolf', B: 'moench', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf', G: 'dorfbewohner' });
+  night(s, { moench: ['A'], werwoelfe: ['C'] });
+  check('Monk kills a werewolf', !isAlive(s, 'A') && isAlive(s, 'B') && s.p.moenchUsed);
+  W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
+  check('Monk only once', W.currentStep(s) && (W.stepStatus(s, 'moench') !== 'active'));
+  // … or the monk himself
+  s = game({ A: 'werwolf', B: 'moench', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf', G: 'dorfbewohner' });
+  night(s, { moench: ['C'], werwoelfe: ['D'] });
+  check('Monk dies when wrong', !isAlive(s, 'B') && isAlive(s, 'C'));
+
+  // ghost hand: acts only after death, sign shown in the morning
+  s = game({ A: 'werwolf', B: 'geisterhand', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner', G: 'werwolf' });
+  W.startNight(s);
+  check('Ghost hand alive: only called for show', W.stepStatus(s, 'geisterhand') !== 'active');
+  while (s.screen === 'night') { const c = W.currentStep(s); W.submitStep(s, c.id === 'werwoelfe' ? [id(s, 'B')] : null); }
+  W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
+  check('Ghost hand dead: active', W.stepStatus(s, 'geisterhand') === 'active');
+  night(s, { werwoelfe: ['C'], geisterhand: 'data:image/png;base64,AAAA' });
+  check('Ghost sign in the morning', s.news.sign === 'data:image/png;base64,AAAA' && s.news.lines.some(l => l.k === 'news.ghostSign'));
+
+  // custom roles: reminder step at night, wolf-team custom role counts as evil
+  W.setCustomRoles([{ id: 'c_test', name: 'Bäcker', emoji: '🥖', team: 'dorf', when: 'night', wake: 'Der Bäcker erwacht.' },
+                    { id: 'c_wolf', name: 'Schattenwolf', team: 'wolf', when: 'none' }]);
+  check('Custom role registered', W.ROLE.c_test && W.STEP.c_test && W.ROLE.c_wolf.wakes.includes('werwoelfe'));
+  check('Custom wolf counts as evil', W.validateSetup(['A', 'B', 'C', 'D'], { c_wolf: 1, c_test: 1, dorfbewohner: 2 }).ok);
+  s = game({ A: 'c_wolf', B: 'c_test', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner' });
+  W.startNight(s);
+  const seen = [];
+  while (s.screen === 'night') { const c = W.currentStep(s); seen.push(c.id); W.submitStep(s, c.id === 'werwoelfe' ? [id(s, 'C')] : null); }
+  check('Custom role is called at night', seen.includes('c_test') && !isAlive(s, 'C'));
+  checkMsg({ k: 'log.stepResult', p: { step: 'c_test', res: { k: 'res.seerNo', p: { name: 'X' } } } });
+  W.setCustomRoles([]);
+  check('Custom roles removed again', !W.ROLE.c_test && !W.STEP.c_test);
+
   // balance bar with vampires
   const bp = W.balanceParts({ werwolf: 2, vampir: 1, seherin: 1, dorfbewohner: 4 });
   check('Balance knows vampires', bp.vampir > 0 && bp.wolf > 0 && bp.share > 0 && bp.share < 1);
@@ -307,6 +357,8 @@ function checkMsg(msg) {
 
 // ======================================================= Random games
 (function fuzz() {
+  W.setCustomRoles([{ id: 'c_night', name: 'Nachtrolle', team: 'dorf', when: 'night' }, { id: 'c_wolf', name: 'Schattenwolf', team: 'wolf', when: 'first' },
+                    { id: 'c_solo', name: 'Gaukler', team: 'solo', when: 'day' }]);
   const ids = W.ROLE ? Object.keys(W.ROLE) : [];
   const rnd = n => Math.floor(Math.random() * n);
   const pick = a => a[rnd(a.length)];
@@ -338,9 +390,10 @@ function checkMsg(msg) {
             let v = null;
             if (cur.status === 'active') {
               if (cur.def.kind === 'pick') {
-                const t = W.shuffle(cur.targets).slice(0, cur.def.count);
+                const t = W.shuffle(cur.targets).slice(0, cur.count);
                 v = Math.random() < .15 ? [] : t;
-              } else if (cur.def.kind === 'yesno') v = Math.random() < .5;
+              } else if (cur.def.kind === 'draw') v = Math.random() < .5 ? 'data:image/png;base64,AAAA' : null;
+              else if (cur.def.kind === 'yesno') v = Math.random() < .5;
               else if (cur.def.kind === 'hexe') {
                 const victim = (s.night.sel.werwoelfe || [])[0];
                 const hexeIds = cur.actors;
