@@ -12,7 +12,9 @@
   const HA = window.WW_HA;
   const { ROLES, TEAMS } = window.WW_DATA;
   const CHANGELOG = window.WW_CHANGELOG || [];
-  const VERSION = (CHANGELOG[0] || {}).version || '2.1';
+  const NEWS = CHANGELOG[0] || {};
+  const VERSION = NEWS.version || '2.0';
+  const SEEN_ID = NEWS.seen || VERSION;   // the welcome dialog pops up once per SEEN_ID
   const QR_LIB = 'https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js';
 
   const $app = document.getElementById('app');
@@ -33,7 +35,7 @@
   const prefs = Object.assign({
     lang: (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' : 'en',
     ambient: false, effects: true, voice: 'recorded', volume: 0.8, autoRead: false, muted: false,
-    haLights: []
+    haLights: [], haPreset: 'classic', haEffects: true
   }, store.get(KEY.prefs, {}));
   const savePrefs = () => store.set(KEY.prefs, prefs);
   I.setLang(prefs.lang);
@@ -41,13 +43,14 @@
   const applyAudio = () => A.configure({ ambient: prefs.ambient && !prefs.muted, effects: prefs.effects && !prefs.muted, voice: prefs.muted ? 'off' : prefs.voice, volume: prefs.volume });
   applyAudio();
   HA.setLights(prefs.haLights || []);
+  HA.configure({ preset: prefs.haPreset, effects: prefs.haEffects });
 
   let setup = Object.assign({ players: [], counts: {}, filter: 'alle' }, store.get(KEY.setup, {}));
   setup.settings = Object.assign({}, W.DEFAULT_SETTINGS, setup.settings || {});
   Object.keys(setup.counts).forEach(id => { if (!W.ROLE[id] || !setup.counts[id]) delete setup.counts[id]; });
 
   let game = store.get(KEY.game, null);
-  if (game && (game.v !== 2 || !game.news || (game.news.lines[0] && game.news.lines[0].text))) game = null; // drop old saves (v2.0)
+  if (game && (game.v !== 2 || !game.news || (game.news.lines[0] && game.news.lines[0].text))) game = null; // drop saves from early test builds
   if (game) game.settings = Object.assign({}, W.DEFAULT_SETTINGS, game.settings);
   let history = game ? store.get(KEY.hist, []) : [];
 
@@ -58,7 +61,8 @@
 
   /** Transient UI state (not saved). */
   let tmp = freshTmp();
-  function freshTmp() { return { key: null, sel: [], poisonOpen: false, heal: false, poison: null, seen: false, blumen: false, showSecretLog: false, cardLang: null, qr: false, auto: null }; }
+  function freshTmp() { return { key: null, sel: [], poisonOpen: false, heal: false, poison: null, seen: false, blumen: false, showSecretLog: false, cardLang: null, qr: false, auto: null, haQuery: '' }; }
+  let triedStart = false;   // setup problems are only shown after the first attempt to start
   const timer = { total: 0, left: 0, running: false, handle: null, day: null };
   let autoTimers = [];
   const clearAuto = () => { autoTimers.forEach(clearTimeout); autoTimers = []; };
@@ -105,6 +109,20 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => $toast.classList.remove('show'), 2400);
   }
+  // ------------------------------------------------------------ Fullscreen
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const fsSupported = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  function toggleFullscreen() {
+    try {
+      if (fsElement()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else { const el = document.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen).call(el); }
+    } catch (e) { /* not allowed */ }
+  }
+  ['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => { render(); if (modalName === 'settings') openSettings(); }));
+  const fsButton = () => fsSupported() && !isStandalone()
+    ? `<button class="icon-btn" data-act="fullscreen" aria-label="${t(fsElement() ? 'nav.exitFullscreen' : 'nav.fullscreen')}" title="${t(fsElement() ? 'nav.exitFullscreen' : 'nav.fullscreen')}">${fsElement() ? '🗗' : '⛶'}</button>` : '';
+
   function vibrate(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { /* not supported */ } }
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -232,14 +250,18 @@
       </div>`;
     }).join('') || `<p class="muted small">${t('setup.noRoles')}</p>`;
 
-    const msgs = [...v.errors.slice(0, 2).map(e => `<div class="msg err">⚠️ ${esc(m(e))}</div>`), ...(v.ok ? v.warnings.slice(0, 2).map(w => `<div class="msg warn">💡 ${esc(m(w))}</div>`) : [])].join('');
+    if (v.ok) triedStart = false;
+    // Problems only appear after the first attempt to start – not when the app opens.
+    const msgs = triedStart && !v.ok ? `<div class="msg err"><strong>${t('setup.fix')}</strong>${v.errors.slice(0, 3).map(e => `<div>⚠️ ${esc(m(e))}</div>`).join('')}</div>` : '';
+    const hints = v.ok && v.warnings.length ? `<div class="hints">${v.warnings.slice(0, 2).map(w => `<div class="hint-line">💡 ${esc(m(w))}</div>`).join('')}</div>` : '';
 
     return `
-      <header class="topbar">
-        <div class="brand"><span class="logo">🐺</span><h1>Werwolf <span>Manager</span></h1><span class="badge">v${esc(VERSION)}</span></div>
-        ${langChip()}
-        <button class="icon-btn" data-act="openNews" aria-label="${t('nav.news')}" title="${t('nav.news')}">✨</button>
-        <button class="icon-btn" data-act="openSettings" aria-label="${t('nav.options')}" title="${t('nav.options')}">⚙️</button>
+      <header class="topbar home">
+        <div class="brand"><span class="logo">🐺</span><div class="brand-text"><h1>Werwolf</h1><span class="brand-sub">Manager · <button class="linkish" data-act="openNews">v${esc(VERSION)} ✨</button></span></div></div>
+        <div class="top-actions">
+          ${langChip()}
+          <button class="icon-btn" data-act="openSettings" aria-label="${t('nav.options')}" title="${t('nav.options')}">⚙️</button>
+        </div>
       </header>
       <div class="screen">
       ${game && game.phase === 'over' ? `
@@ -290,6 +312,7 @@
         <div class="chips" style="margin-top:12px">
           ${[['alle', t('filter.all')], ['klassisch', t('filter.classic')], ['neu', t('filter.new')], ['gewaehlt', t('filter.picked')]].map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('')}
         </div>
+        ${hints}
         <div class="role-grid stagger">${roleCards}</div>
       </section>
 
@@ -297,7 +320,9 @@
       </div>
       <div class="dock"><div class="inner">
         <div class="msgs">${msgs}</div>
-        <button class="btn primary big block" data-act="startGame" ${v.ok ? '' : 'disabled'}>🎴 ${t('setup.start')}</button>
+        <button class="btn primary big block ${v.ok ? '' : 'soft'}" data-act="startGame">
+          <span>🎴 ${t('setup.start')}</span><small class="start-status">${t('setup.status', { p: n, r: total })}</small>
+        </button>
       </div></div>`;
   }
 
@@ -372,7 +397,7 @@
       <div class="screen reveal-wrap">
         <div class="progress-dots">${dots}</div>
         <div class="pass-hint">${t('reveal.yourRole', { name: `<strong>${esc(p.name)}</strong>` })}</div>
-        <div class="card-stage" id="cardStage" style="--tc:${teamOf(W.ROLE[p.roleId]).color}">
+        <div class="card-stage" id="cardStage" style="--tc:${teamOf(W.ROLE[p.roleId]).color}" data-sealed>
           ${roleFace(p.roleId, game.p.guenstlingTeam, lang)}
           ${cardCover(lang)}
         </div>
@@ -423,7 +448,7 @@
       <header class="topbar slim"><span class="spacer muted small">🐺 Werwolf Manager</span></header>
       <div class="screen reveal-wrap">
         <div class="pass-hint">${I.t('reveal.yourRole', { name: `<strong>${esc(o.n)}</strong>` }, lang)}</div>
-        <div class="card-stage" id="cardStage" style="--tc:${teamOf(W.ROLE[o.r]).color}">
+        <div class="card-stage" id="cardStage" style="--tc:${teamOf(W.ROLE[o.r]).color}" data-sealed>
           ${roleFace(o.r, o.g, lang)}
           ${cardCover(lang)}
         </div>
@@ -443,9 +468,13 @@
     };
     const setY = y => { cover.style.transform = `translateY(${-y}px) rotate(${-y / h() * 4}deg)`; stage.classList.toggle('open', y > h() * 0.35); if (y > h() * 0.35) markSeen(); };
     const open = () => { cover.classList.remove('dragging'); setY(h() * 0.88); };
-    const close = () => { clearTimeout(holdT); active = false; cover.classList.remove('dragging'); cover.style.transform = ''; stage.classList.remove('open'); };
+    // The face stays invisible until the card is touched, so no team colour can shine through.
+    const close = () => {
+      clearTimeout(holdT); active = false; cover.classList.remove('dragging'); cover.style.transform = ''; stage.classList.remove('open');
+      setTimeout(() => { if (!active) stage.classList.remove('peek'); }, 280);
+    };
     cover.addEventListener('pointerdown', e => {
-      active = true; startY = e.clientY;
+      active = true; startY = e.clientY; stage.classList.add('peek');
       try { cover.setPointerCapture(e.pointerId); } catch (err) { /* ok */ }
       holdT = setTimeout(open, 140);
     });
@@ -456,7 +485,7 @@
     });
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => cover.addEventListener(ev, close));
     cover.addEventListener('contextmenu', e => e.preventDefault());
-    cover.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); open(); } });
+    cover.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); stage.classList.add('peek'); open(); } });
     cover.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') close(); });
   }
 
@@ -468,19 +497,25 @@
       mayor: renderMayor, day: renderDay, tie: renderTie, cleaner: isAuto() ? renderAutoCleaner : renderCleaner, over: renderOver
     }[game.screen] || (() => `<div class="panel">? „${esc(game.screen)}“ <button class="btn" data-act="undo">↶</button></div>`);
     const hideUndo = isAuto() && game.screen === 'night';
+    const living = W.alive(game).length;
     return `
-      <header class="topbar">
-        <h1 class="phase-title">${label}${isAuto() ? ` <span class="badge mode-badge" title="${t('mode.autoShort')}">📱</span>` : ''}</h1>
-        ${langChip()}
-        <button class="icon-btn" data-act="toggleMute" aria-label="${t('a11y.mute')}" title="${t('a11y.mute')}">${prefs.muted ? '🔇' : '🔊'}</button>
+      <header class="game-head">
+        <div class="topbar">
+          <h1 class="phase-title">${label}${isAuto() ? ` <span class="badge mode-badge" title="${t('mode.autoShort')}">📱</span>` : ''}</h1>
+          <div class="top-actions">
+            ${langChip()}
+            ${fsButton()}
+            <button class="icon-btn" data-act="toggleMute" aria-label="${t('a11y.mute')}" title="${t('a11y.mute')}">${prefs.muted ? '🔇' : '🔊'}</button>
+          </div>
+        </div>
+        <nav class="toolbar" aria-label="${t('a11y.nav')}">
+          <button class="tool" data-act="undo" ${history.length && !hideUndo ? '' : 'disabled'}>↶ ${t('nav.undo')}</button>
+          <button class="tool" data-act="openPlayers">👥 ${living}/${game.players.length}</button>
+          <button class="tool" data-act="openLog">📜 ${t('nav.log')}</button>
+          <button class="tool icon" data-act="openSettings" aria-label="${t('nav.options')}" title="${t('nav.options')}">⚙️</button>
+        </nav>
       </header>
-      <div class="screen">${body()}</div>
-      <nav class="tabbar" aria-label="${t('a11y.nav')}">
-        <button data-act="undo" ${history.length && !hideUndo ? '' : 'disabled'}><span class="ti">↶</span><span class="tl">${t('nav.undo')}</span></button>
-        <button data-act="openPlayers"><span class="ti">👥</span><span class="tl">${t('nav.players')}</span></button>
-        <button data-act="openLog"><span class="ti">📜</span><span class="tl">${t('nav.log')}</span></button>
-        <button data-act="openSettings"><span class="ti">⚙️</span><span class="tl">${t('nav.options')}</span></button>
-      </nav>`;
+      <div class="screen">${body()}</div>`;
   }
 
   function stepEmoji(id) {
@@ -513,6 +548,13 @@
     const visible = game.night.steps.filter(id => W.stepStatus(game, id) !== 'skip');
     const pos = Math.max(0, visible.indexOf(cur.id));
     return `<div class="steps-progress">${visible.map((_, i) => `<i class="${i < pos ? 'done' : i === pos ? 'now' : ''}"></i>`).join('')}</div>`;
+  }
+
+  /** Werewolves may have to kill (setting); without a game master Cupid must choose. */
+  function canSkip(cur, auto) {
+    if (cur.id === 'werwoelfe' && game.settings.wolvesMustKill) return false;
+    if (cur.id === 'amor' && auto) return false;
+    return true;
   }
 
   /** Input part of a night step (shared by game-master and auto mode). */
@@ -555,7 +597,7 @@
       ${res ? `<div class="result ${res.good ? 'good' : 'bad'}">${esc(m(res))}</div>` : ''}
       <div style="height:14px"></div>
       <div class="btn-row">
-        <button class="btn" data-act="skipStep" style="flex:0 0 auto">${cur.id === 'werwoelfe' ? t('night.noVictim') : t('common.skip')}</button>
+        ${canSkip(cur, auto) ? `<button class="btn" data-act="skipStep" style="flex:0 0 auto">${cur.id === 'werwoelfe' ? t('night.noVictim') : t('common.skip')}</button>` : ''}
         <button class="btn primary big" data-act="confirmStep" ${tmp.sel.length === need ? '' : 'disabled'}>${t('common.confirm')} ✓</button>
       </div>`;
   }
@@ -603,6 +645,7 @@
           <button class="btn primary big block" data-act="autoStartNight">🌙 ${t('auto.go')}</button>
         </section>`;
     }
+    if (cur.id === 'liebende' && game.night.pass && a.phase !== 'blank' && game.night.pass.idx < game.night.pass.list.length) return renderLoverPass();
     if (a.phase === 'blank' || cur.status === 'fake' || cur.def.kind === 'info') {
       return `<section class="auto-stage blank"><div class="moon-pulse">🌙</div><p class="muted">${t('auto.eyesClosed')}</p></section>`;
     }
@@ -611,13 +654,6 @@
           <div class="step-head"><span class="emo">${stepEmoji(cur.id)}</span><h2>${esc(st.title)}</h2></div>
           <div class="result ${a.result.good ? 'good' : 'bad'} big">${esc(m(a.result))}</div>
           <button class="btn primary big block" data-act="autoResultOk">${t('auto.gotIt')} ✓</button>
-        </section>`;
-    }
-    if (a.phase === 'amorTap') {
-      return `<section class="auto-stage">
-          <div class="big-emo">💘</div>
-          <h2>${t('auto.amorTap', { names: tmp.sel.map(pname).join(' & ') })}</h2>
-          <button class="btn primary big block" data-act="autoAmorDone">${t('auto.done')} ✓</button>
         </section>`;
     }
     return `
@@ -630,6 +666,42 @@
       </section>`;
   }
 
+  /** Phone round in the first night: the lovers see their partner, everyone else sees "nothing new". */
+  function renderLoverPass() {
+    const ps = game.night.pass;
+    const pid = ps.list[ps.idx];
+    const pl = byId(pid);
+    if (!pl) return `<section class="auto-stage blank"><div class="moon-pulse">🌙</div><p class="muted">${t('auto.eyesClosed')}</p></section>`;
+    const dots = ps.list.map((_, i) => `<i class="${i < ps.idx ? 'done' : i === ps.idx ? 'now' : ''}"></i>`).join('');
+    if (ps.stage === 'hand') {
+      return `<section class="auto-stage">
+          <div class="pass-hint small">💌 ${t('pass.title')}</div>
+          <div class="progress-dots">${dots}</div>
+          <div class="pass-hint">${t('reveal.passTo')}</div>
+          <div class="pass-name pop">${esc(pl.name)}</div>
+          <button class="btn primary big block" data-act="loverPassLook">${t('reveal.iAm', { name: esc(pl.name) })}</button>
+        </section>`;
+    }
+    const partner = W.loverPassInfo(game, pid);
+    const last = ps.idx === ps.list.length - 1;
+    return `<section class="auto-stage">
+        <div class="progress-dots">${dots}</div>
+        <div class="pass-card">
+          <div class="big-emo">${partner ? '💘' : '🌙'}</div>
+          <h2>${partner ? t('pass.lover', { name: esc(partner) }) : t('pass.nothing')}</h2>
+          <p class="muted">${partner ? t('pass.loverText') : t('pass.nothingText')}</p>
+        </div>
+        <button class="btn primary big block" data-act="loverPassNext">${last ? t('pass.last') : t('pass.next')} ✓</button>
+      </section>`;
+  }
+  function finishLoverPass() {
+    tmp.auto = { phase: 'blank', started: true }; render();
+    narrateLine('passEnd').then(() => later(rand(2, 4), () => {
+      tmp.auto = { phase: 'call', started: true };
+      commit(g => { g.night.pass = null; W.submitStep(g, null); });
+    }));
+  }
+
   /** Drives the timing in no-game-master mode (started for every new step). */
   function autoController() {
     clearAuto();
@@ -639,6 +711,15 @@
     const firstStep = game.night.steps.filter(id => W.stepStatus(game, id) !== 'skip')[0] === cur.id;
     if (firstStep && !(tmp.auto && tmp.auto.started) && !game.night.autoStarted) { tmp.auto = { phase: 'intro' }; return; }
     tmp.auto = { phase: 'call', started: true };
+    if (cur.id === 'liebende' && cur.status === 'active') {
+      if (game.night.pass) {   // reloaded during the round: continue (or finish it)
+        if (game.night.pass.idx >= game.night.pass.list.length) finishLoverPass();
+        return;
+      }
+      tmp.auto = { phase: 'blank', started: true };
+      narrateLine('passStart').then(() => { tmp.auto = { phase: 'call', started: true }; mutate(g => W.loverPassStart(g)); });
+      return;
+    }
     if (cur.id === 'werwoelfe') { A.fx('howl'); HA.pulse(); }
     const passive = cur.status === 'fake' || cur.def.kind === 'info';
     narrateStep(cur.id, 'wake').then(() => {
@@ -723,7 +804,7 @@
   function renderMayor() {
     return `
       <section class="panel">
-        <div class="step-head"><span class="emo">👑</span><div><h2>${t('mayor.title')}</h2><div class="who">${t('mayor.day1')}</div></div></div>
+        <div class="step-head"><span class="emo">👑</span><div><h2>${t('mayor.title')}</h2><div class="who">${game.round === 1 && !game.p.mayorElect ? t('mayor.day1') : t('mayor.reelect')}</div></div></div>
         ${narration(t('voice.mayor'), 'mayor')}
         <p class="sub">${t('mayor.text')}</p>
         ${pickGrid(W.alive(game).map(p => p.id))}
@@ -983,15 +1064,15 @@
 
   // ------------------------------------------------------------ MODALS
   let modalName = null;
-  function openModal(html, name) {
+  function openModal(html, name, cls = '') {
     const existing = $modal.querySelector('.modal');
-    if (existing && !existing.closest('.closing')) {
+    if (existing && !existing.closest('.closing') && modalName !== null && (existing.dataset.cls || '') === cls) {
       // swap content instead of re-animating → no flicker
       const top = existing.scrollTop;
       existing.innerHTML = html;
       if (modalName === name) existing.scrollTop = top;
     } else {
-      $modal.innerHTML = `<div class="modal-back" data-modal-back><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
+      $modal.innerHTML = `<div class="modal-back ${cls}" data-modal-back><div class="modal ${cls}" data-cls="${cls}" role="dialog" aria-modal="true">${html}</div></div>`;
     }
     modalName = name || null;
   }
@@ -1014,8 +1095,10 @@
         <p class="muted small" style="margin-top:18px">${t('news.version', { v: v.version, d: L.date })}</p>
       </div>`;
     }).join('<hr class="soft">');
-    openModal(`${modalHead(`✨ ${t('news.whatsNew', { v: VERSION })}`)}${html}<div style="height:14px"></div><button class="btn primary block" data-act="closeModal">${t('news.letsGo')}</button>`, 'news');
-    store.set(KEY.seen, VERSION);
+    openModal(`<button class="icon-btn close floating" data-act="closeModal" aria-label="${t('common.close')}">✕</button>
+      <div class="news-hero"><div class="logo float">🐺</div><h2>${t('news.whatsNew', { v: VERSION })}</h2></div>
+      ${html}<div style="height:14px"></div><button class="btn primary block" data-act="closeModal">${t('news.letsGo')}</button>`, 'news', 'centered');
+    store.set(KEY.seen, SEEN_ID);
   }
 
   function openRoleInfo(id) {
@@ -1032,27 +1115,78 @@
       <button class="btn block" data-act="closeModal">${t('common.close')}</button>`, 'role');
   }
 
+  /** Home Assistant block of the settings (re-rendered on its own, so the dialog never flickers). */
+  function haBlockHtml() {
+    const ha = HA.state;
+    if (ha.status !== 'on') {
+      return `
+        <p class="muted small">${t('ha.intro')}</p>
+        <div class="row"><input class="input" id="haUrl" placeholder="https://home.example.de" value="${esc(store.get('ww2.haUrl', '') || '')}" inputmode="url" autocomplete="url">
+          <button class="btn primary" data-act="haConnect" ${ha.status === 'connecting' ? 'disabled' : ''}>${ha.status === 'connecting' ? '…' : t('ha.connect')}</button></div>
+        ${ha.status === 'error' ? `<p class="small err-text">⚠️ ${t('ha.error')}</p>` : ''}`;
+    }
+    const presets = Object.keys(HA.PRESETS).map(k => `
+      <button class="preset ${prefs.haPreset === k ? 'on' : ''}" data-act="haPreset" data-val="${k}">
+        <span class="sw" style="--a:${HA.SWATCH[k][0]};--b:${HA.SWATCH[k][1]}"></span>
+        <strong>${t('preset.' + k)}</strong><small>${t('preset.' + k + 'Desc')}</small>
+      </button>`).join('');
+    return `
+      <p class="small ok-text">✅ ${t('ha.connected', { url: esc(ha.url || '') })}</p>
+      <div class="sub-label">${t('ha.preset')}</div>
+      <div class="presets">${presets}</div>
+      <div class="setting"><span class="lbl">${t('ha.effects')}<small>${t('ha.effectsHint')}</small></span>
+        <button class="switch ${prefs.haEffects ? 'on' : ''}" data-act="haEffects" aria-label="${t('ha.effects')}"></button></div>
+      <div class="sub-label">${t('ha.lights')} <span class="muted" id="haSelCount">(${prefs.haLights.length})</span></div>
+      <input class="input small-input" id="haSearch" placeholder="${t('ha.search')}" value="${esc(tmp.haQuery)}" autocomplete="off">
+      <div class="light-list" id="haLights">${lightListHtml()}</div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn" data-act="haTest" ${prefs.haLights.length ? '' : 'disabled'}>✨ ${t('ha.test')}</button>
+        <button class="btn ghost" data-act="haDisconnect">${t('ha.disconnect')}</button>
+      </div>`;
+  }
+  /** Lights grouped by room; selected ones first. Filtering happens without re-rendering (see haSearch). */
+  function lightListHtml() {
+    const all = HA.lights();
+    if (!all.length) return `<p class="muted small">${HA.state.all.length ? t('ha.noLights') : t('ha.loading')}</p>`;
+    const sel = all.filter(l => prefs.haLights.includes(l.id));
+    const groups = {};
+    all.forEach(l => { const a = l.area || t('ha.noArea'); (groups[a] = groups[a] || []).push(l); });
+    const item = l => `<label class="light-item" data-search="${esc((l.name + ' ' + (l.area || '')).toLowerCase())}">
+        <input type="checkbox" data-light="${esc(l.id)}" ${prefs.haLights.includes(l.id) ? 'checked' : ''}><span>${esc(l.name)}</span></label>`;
+    return `${sel.length ? `<div class="light-group sel"><div class="lg-head">⭐ ${t('ha.selected')}</div>${sel.map(item).join('')}</div>` : ''}
+      ${Object.entries(groups).map(([a, ls]) => `<div class="light-group"><div class="lg-head">${esc(a)} <span class="muted">· ${ls.length}</span></div>${ls.map(item).join('')}</div>`).join('')}
+      <p class="muted small no-match" hidden>${t('ha.noMatch')}</p>`;
+  }
+  function filterLights() {
+    const q = tmp.haQuery.trim().toLowerCase();
+    const box = document.getElementById('haLights');
+    if (!box) return;
+    let any = false;
+    box.querySelectorAll('.light-group').forEach(g => {
+      let vis = 0;
+      g.querySelectorAll('.light-item').forEach(it => { const ok = !q || it.dataset.search.includes(q); it.hidden = !ok; if (ok) vis++; });
+      g.hidden = !vis || (q && g.classList.contains('sel'));
+      if (!g.hidden) any = true;
+    });
+    const nm = box.querySelector('.no-match'); if (nm) nm.hidden = any;
+  }
+  function refreshHaBlock(what) {
+    if (modalName !== 'settings') return;
+    if (what === 'lights' && document.getElementById('haLights')) { document.getElementById('haLights').innerHTML = lightListHtml(); filterLights(); return; }
+    const box = document.getElementById('haBlock');
+    if (box) { box.innerHTML = haBlockHtml(); filterLights(); }
+  }
+
   function openSettings() {
     const inGame = !!(game && (view === 'game' || view === 'reveal'));
     const S = inGame ? game.settings : setup.settings;
     const sw = (act, key, on, label, hint, disabled) => `
       <div class="setting"><span class="lbl">${label}<small>${hint}</small></span>
         <button class="switch ${on ? 'on' : ''}" data-act="${act}" data-key="${key}" ${disabled ? 'disabled' : ''} aria-label="${label}"></button></div>`;
-    const ha = HA.state;
-    const haLights = ha.status === 'on' ? HA.lights() : [];
-    const haBlock = ha.status === 'on' ? `
-        <p class="small ok-text">✅ ${t('ha.connected', { url: esc(ha.url || '') })}</p>
-        <div class="light-list">${haLights.length ? haLights.map(l => `
-          <label class="light-item"><input type="checkbox" data-light="${esc(l.id)}" ${prefs.haLights.includes(l.id) ? 'checked' : ''}>
-            <span>${l.on ? '💡' : '⚫'} ${esc(l.name)}</span></label>`).join('') : `<p class="muted small">${t('ha.noLights')}</p>`}</div>
-        <div class="btn-row" style="margin-top:10px">
-          <button class="btn" data-act="haTest" ${prefs.haLights.length ? '' : 'disabled'}>✨ ${t('ha.test')}</button>
-          <button class="btn ghost" data-act="haDisconnect">${t('ha.disconnect')}</button>
-        </div>` : `
-        <p class="muted small">${t('ha.intro')}</p>
-        <div class="row"><input class="input" id="haUrl" placeholder="https://home.example.de" value="${esc(store.get('ww2.haUrl', '') || '')}" inputmode="url" autocomplete="url">
-          <button class="btn primary" data-act="haConnect" ${ha.status === 'connecting' ? 'disabled' : ''}>${ha.status === 'connecting' ? '…' : t('ha.connect')}</button></div>
-        ${ha.status === 'error' ? `<p class="small err-text">⚠️ ${t('ha.error')}</p>` : ''}`;
+    const fsRow = fsSupported() && !isStandalone()
+      ? `<div class="setting"><span class="lbl">${t('set.fullscreen')}<small>${t('set.fullscreenHint')}</small></span>
+          <button class="switch ${fsElement() ? 'on' : ''}" data-act="fullscreen" aria-label="${t('set.fullscreen')}"></button></div>`
+      : (isStandalone() ? '' : `<p class="muted small">📱 ${t('set.fullscreenIos')}</p>`);
     openModal(`
       ${modalHead(`⚙️ ${t('nav.options')}`)}
       <h3>🌍 ${t('set.language')}</h3>
@@ -1064,7 +1198,9 @@
       ${sw('setRule', 'narration', S.narration, t('set.narration'), t('set.narrationHint'))}
       ${sw('setRule', 'revealRoles', S.revealRoles, t('set.reveal'), t('set.revealHint'))}
       ${sw('setRule', 'callDeadRoles', S.callDeadRoles, t('set.dead'), t('set.deadHint'))}
+      ${sw('setRule', 'wolvesMustKill', S.wolvesMustKill, t('set.wolvesMust'), t('set.wolvesMustHint'))}
       ${sw('setRule', 'mayor', S.mayor, t('set.mayor'), t('set.mayorHint'))}
+      ${S.mayor ? `<div class="setting"><span class="lbl">${t('set.mayorSucc')}<small>${t('set.mayorSuccHint')}</small></span>${seg('setRule', 'mayorSuccession', S.mayorSuccession, [['choose', '👉 ' + t('set.succChoose')], ['elect', '🗳️ ' + t('set.succElect')]])}</div>` : ''}
       ${sw('setRule', 'wolvesParity', S.wolvesParity, t('set.parity'), t('set.parityHint'))}
       <div class="setting"><span class="lbl">${t('set.seer')}<small>${t('set.seerHint')}</small></span>${seg('setRule', 'seerMode', S.seerMode, [['team', t('set.seerTeam')], ['role', t('set.seerRole')]])}</div>
       <div class="setting"><span class="lbl">${t('set.minutes')}<small>${t('set.minutesHint')}</small></span>${seg('setRule', 'dayMinutes', String(S.dayMinutes), [2, 3, 5, 8, 10].map(x => [String(x), String(x)]))}</div>
@@ -1076,15 +1212,23 @@
       ${sw('setPref', 'autoRead', prefs.autoRead, t('set.autoRead'), t('set.autoReadHint'))}
       <div class="setting"><span class="lbl">${t('set.volume')}</span><input type="range" min="0" max="1" step="0.05" value="${prefs.volume}" data-input="volume" class="range"></div>
 
-      <h3>💡 ${t('set.lights')}</h3>
-      ${haBlock}
+      <h3>📺 ${t('set.display')}</h3>
+      ${fsRow}
+
+      <h3 id="haSection">💡 ${t('set.lights')}</h3>
+      <div id="haBlock">${haBlockHtml()}</div>
 
       ${inGame && view === 'game' ? `
         <div style="height:18px"></div>
         ${isAuto() && game.phase !== 'over' ? `<button class="btn block" data-act="takeOver">🧑‍⚖️ ${t('set.takeOver')}</button><div style="height:8px"></div>` : ''}
         <button class="btn danger block" data-act="abortGame">${t('set.abort')}</button>` : ''}
-      <div style="height:10px"></div>
+
+      <h3>🗄️ ${t('set.data')}</h3>
+      <div class="setting"><span class="lbl">${t('set.clearData')}<small>${t('set.clearDataHint')}</small></span>
+        <button class="btn danger small-btn" data-act="clearData">🗑️</button></div>
+      <div style="height:14px"></div>
       <button class="btn primary block" data-act="closeModal">${t('common.done')}</button>`, 'settings');
+    filterLights();
   }
 
   function openPlayers() {
@@ -1226,7 +1370,7 @@
     filter(d) { setup.filter = d.f; saveSetup(); render(); },
     startGame() {
       const v = W.validateSetup(setup.players, setup.counts, setup.settings);
-      if (!v.ok) return toast(m(v.errors[0]));
+      if (!v.ok) { triedStart = true; vibrate(60); render(); const d = $app.querySelector('.dock .msgs'); if (d) d.classList.add('shake'); return; }
       if (game && game.phase !== 'over') confirmBox(t('setup.overwriteQ'), t('setup.overwriteOk'), startNewGame); else startNewGame();
     },
     showResult() { view = 'game'; render(); },
@@ -1274,7 +1418,6 @@
       const cur = W.currentStep(game);
       const res = W.stepResult(game, cur.id, v);
       if (res) { tmp.auto = Object.assign({}, tmp.auto, { phase: 'result', result: res, value: v }); return render(); }
-      if (cur.id === 'amor') { tmp.auto = Object.assign({}, tmp.auto, { phase: 'amorTap', value: v }); return render(); }
       finishAutoStep(v);
     },
     skipStep() {
@@ -1295,7 +1438,12 @@
       narrateLine('nightStart').then(() => later(1500, () => { tmp.auto = { phase: 'call', started: true }; autoController(); render(); }));
     },
     autoResultOk() { finishAutoStep(tmp.auto.value); },
-    autoAmorDone() { finishAutoStep(tmp.auto.value); },
+    loverPassLook() { A.fx('swoosh'); mutate(g => { g.night.pass.stage = 'look'; }); },
+    loverPassNext() {
+      tmp.auto = { phase: 'call', started: true };
+      if (W.loverPassNext(game)) { saveGame(); finishLoverPass(); return; }
+      saveGame(); render();
+    },
     autoCleaner(d) { autoCleanerFinish(d.yes === '1'); },
 
     // --- Interrupts
@@ -1389,8 +1537,18 @@
       store.set('ww2.haUrl', url);
       HA.connect(url);
     },
-    haDisconnect() { HA.disconnect(); openSettings(); },
-    haTest() { HA.test(); }
+    haDisconnect() { HA.disconnect(); prefs.haLights = []; savePrefs(); HA.setLights([]); openSettings(); },
+    haTest() { HA.test(); },
+    haPreset(d) { prefs.haPreset = d.val; savePrefs(); HA.configure({ preset: d.val }); refreshHaBlock('all'); },
+    haEffects() { prefs.haEffects = !prefs.haEffects; savePrefs(); HA.configure({ effects: prefs.haEffects }); refreshHaBlock('all'); },
+    fullscreen() { toggleFullscreen(); },
+    clearData() {
+      confirmBox(t('set.clearDataQ'), t('set.clearDataOk'), () => {
+        clearAuto(); A.stopVoice(); HA.restore();
+        try { Object.keys(localStorage).filter(k => k.startsWith('ww2.')).forEach(k => localStorage.removeItem(k)); } catch (e) { /* blocked */ }
+        location.replace(location.pathname);
+      });
+    }
   };
 
   function handleClick(e) {
@@ -1413,7 +1571,12 @@
     prefs.haLights = prefs.haLights.filter(x => x !== id);
     if (e.target.checked) prefs.haLights.push(id);
     savePrefs(); HA.setLights(prefs.haLights);
-    openSettings();
+    $modal.querySelectorAll(`input[data-light="${CSS.escape(id)}"]`).forEach(x => { x.checked = e.target.checked; });
+    const c = document.getElementById('haSelCount'); if (c) c.textContent = `(${prefs.haLights.length})`;
+    const tb = $modal.querySelector('[data-act="haTest"]'); if (tb) tb.disabled = !prefs.haLights.length;
+  });
+  $modal.addEventListener('input', e => {
+    if (e.target.id === 'haSearch') { tmp.haQuery = e.target.value; filterLights(); }
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && $modal.innerHTML) closeModal(); });
   $app.addEventListener('submit', e => {
@@ -1428,11 +1591,19 @@
     saveSetup(); focusInput = true; render();
   });
   window.addEventListener('hashchange', () => { if (location.hash.startsWith('#role=')) { view = 'qrrole'; render(); } });
-  HA.onChange(() => { if (modalName === 'settings') openSettings(); });
+  HA.onChange(what => {
+    refreshHaBlock(what);
+    if (what === 'status' && HA.state.status === 'on' && HA.state.justLoggedIn) {
+      HA.state.justLoggedIn = false;
+      toast('✅ ' + t('ha.loggedIn'));
+      openSettings();
+      setTimeout(() => { const h = document.getElementById('haSection'); if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 250);
+    }
+  });
 
   // ------------------------------------------------------------ Start
   render();
   HA.resume();
-  if (view !== 'qrrole' && store.get(KEY.seen, null) !== VERSION) setTimeout(openNews, 400);
+  if (view !== 'qrrole' && !location.search.includes('auth_callback') && store.get(KEY.seen, null) !== SEEN_ID) setTimeout(openNews, 400);
   if ('speechSynthesis' in window) window.speechSynthesis.getVoices();
 })();

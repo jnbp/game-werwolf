@@ -157,7 +157,7 @@ hr.soft { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 
 .card-stage { position: relative; width: min(330px, 86vw); aspect-ratio: 3 / 4.3; margin: 0 auto; user-select: none; -webkit-user-select: none; touch-action: none; }
 .role-face, .card-cover { position: absolute; inset: 0; border-radius: 24px; }
-.role-face { background: radial-gradient(circle at 50% 22%, rgba(255, 255, 255, .12), transparent 55%), var(--panel-solid); border: 2px solid var(--tc, var(--gold)); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 22px; gap: 10px; box-shadow: 0 0 40px color-mix(in srgb, var(--tc, var(--gold)) 35%, transparent); }
+.role-face { background: radial-gradient(circle at 50% 22%, rgba(255, 255, 255, .12), transparent 55%), var(--panel-solid); border: 2px solid var(--tc, var(--gold)); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 22px; gap: 10px; }
 .role-face .emo { font-size: 4.2rem; line-height: 1; }
 .role-face .rname { font-family: var(--font-title); font-size: 1.6rem; }
 .role-face .team-tag { font-size: .8rem; font-weight: 700; padding: 4px 10px; border-radius: 99px; background: color-mix(in srgb, var(--tc) 18%, transparent); color: var(--tc); }
@@ -272,7 +272,7 @@ hr.soft { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .seg button { border: 0; background: none; padding: 7px 10px; border-radius: 8px; font-size: .85rem; font-weight: 600; }
 .seg button.on { background: var(--gold); color: #1d1405; }
 
-#toast { position: fixed; left: 50%; bottom: calc(110px + var(--safe-b)); transform: translateX(-50%) translateY(20px); background: #000d; color: #fff; padding: 10px 16px; border-radius: 99px; font-size: .9rem; opacity: 0; pointer-events: none; transition: .25s; z-index: 60; max-width: 90vw; }
+#toast { position: fixed; left: 50%; bottom: calc(96px + var(--safe-b)); transform: translateX(-50%) translateY(20px); background: #000d; color: #fff; padding: 10px 16px; border-radius: 99px; font-size: .9rem; opacity: 0; pointer-events: none; transition: .25s; z-index: 60; max-width: 90vw; }
 #toast.show { opacity: 1; transform: translateX(-50%); }
 
 .resume { display: flex; align-items: center; gap: 12px; background: linear-gradient(90deg, var(--gold-soft), transparent); border: 1px solid rgba(240, 184, 90, .45); }
@@ -287,10 +287,8 @@ hr.soft { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 
 
 /* ==========================================================================
-   v2.1 – language, navigation, no-game-master mode, animations
+   Language, navigation, no-game-master mode, animations
    ========================================================================== */
-.brand h1 span { color: var(--gold); }
-@media (max-width: 420px) { .brand h1 { font-size: 1.25rem; } .brand .badge { display: none; } }
 .topbar.slim { margin-bottom: 0; }
 .lang-chip { display: inline-flex; border: 1px solid var(--line-strong); background: rgba(0, 0, 0, .25); border-radius: 99px; padding: 3px; gap: 2px; flex: none; }
 .lang-chip span { font-size: .72rem; font-weight: 800; padding: 6px 8px; border-radius: 99px; color: var(--muted); transition: background .25s, color .25s; }
@@ -317,13 +315,6 @@ hr.soft { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .bal-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; font-size: .72rem; color: var(--muted); }
 .bal-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
 
-/* Bottom navigation */
-.tabbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + var(--safe-b)); z-index: 30; width: min(600px, calc(100% - 20px)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px; border-radius: 20px; background: color-mix(in srgb, var(--panel-solid) 88%, transparent); border: 1px solid var(--line-strong); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: 0 12px 40px rgba(0, 0, 0, .5); animation: rise .5s cubic-bezier(.2, .8, .2, 1) both; }
-.tabbar button { border: 0; background: none; border-radius: 14px; padding: 7px 4px; display: grid; justify-items: center; gap: 2px; transition: background .2s, transform .1s; }
-.tabbar button:active { transform: scale(.94); background: var(--panel-2); }
-.tabbar button:disabled { opacity: .3; }
-.tabbar .ti { font-size: 1.2rem; line-height: 1.2; }
-.tabbar .tl { font-size: .68rem; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
 .actions { margin-bottom: 8px; }
 
 /* Screen transitions & staggered lists */
@@ -359,6 +350,9 @@ hr.soft { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .ok-text { color: var(--ok); } .err-text { color: #ffc2c8; }
 
 /* Reveal */
+/* The face is invisible (and has no glow) until the card is touched – no team colour can shine through. */
+.card-stage[data-sealed] .role-face { visibility: hidden; }
+.card-stage[data-sealed].peek .role-face { visibility: visible; }
 .card-stage.open .role-face { animation: glow 1.6s ease-in-out infinite; }
 @keyframes glow { 50% { box-shadow: 0 0 70px color-mix(in srgb, var(--tc, var(--gold)) 55%, transparent); } }
 .qr-box { width: min(280px, 78vw); aspect-ratio: 1; margin: 0 auto; background: #fff; border-radius: 20px; padding: 14px; display: grid; place-items: center; box-shadow: 0 0 50px rgba(240, 184, 90, .25); animation: popIn .5s cubic-bezier(.2, 1.4, .4, 1) both; }
@@ -375,7 +369,7 @@ hr.soft { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .moon-pulse { font-size: 4.5rem; animation: breathe 4s ease-in-out infinite; filter: drop-shadow(0 0 20px rgba(240, 184, 90, .3)); }
 @keyframes breathe { 50% { transform: scale(1.08); opacity: .55; } }
 body.auto-blank .sky-night { opacity: .35; }
-body.auto-blank .tabbar { opacity: .25; }
+body.auto-blank .game-head { opacity: .25; transition: opacity .6s; }
 .night-panel.auto { border-color: rgba(240, 184, 90, .35); }
 
 /* Voting */
@@ -396,3 +390,74 @@ body.auto-blank .tabbar { opacity: .25; }
 .phase-title .badge { font-family: var(--font); vertical-align: middle; }
 .setting { flex-wrap: wrap; }
 .setting .lbl { flex: 1 1 55%; min-width: 150px; }
+
+/* ==========================================================================
+   Header, toolbar, dialogs, Home Assistant, setup hints
+   ========================================================================== */
+/* Home header: name stacked over version so nothing gets squeezed */
+.topbar { gap: 8px; }
+.topbar.home { margin-bottom: 16px; }
+.brand { gap: 10px; }
+.brand .logo { font-size: 2.2rem; line-height: 1; }
+.brand-text { display: grid; min-width: 0; }
+.brand h1 { font-size: 1.6rem; line-height: 1.05; letter-spacing: .08em; white-space: nowrap; }
+.brand-sub { font-size: .78rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; font-weight: 600; white-space: nowrap; }
+.linkish { border: 0; background: none; padding: 0; color: var(--gold); font: inherit; letter-spacing: inherit; text-transform: none; cursor: pointer; }
+.top-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.top-actions .icon-btn { width: 40px; height: 40px; font-size: 1.05rem; }
+@media (max-width: 380px) { .brand h1 { font-size: 1.35rem; } .brand .logo { font-size: 1.8rem; } }
+
+/* Game header with toolbar (tools, not pages) */
+.game-head { position: sticky; top: 0; z-index: 25; margin: -16px -16px 14px; padding: 12px 16px 10px; background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 96%, transparent) 70%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.game-head .topbar { margin: 0 0 8px; }
+.phase-title { font-size: 1.25rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toolbar { display: flex; gap: 6px; }
+.tool { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; padding: 6px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel-2); font-size: .82rem; font-weight: 600; white-space: nowrap; transition: background .2s, transform .1s, opacity .2s; }
+.tool.icon { flex: 0 0 auto; width: 40px; padding: 0; font-size: 1rem; }
+.tool:active { transform: scale(.95); background: var(--gold-soft); }
+.tool:disabled { opacity: .35; }
+#app:has(.game-head) { padding-bottom: calc(40px + var(--safe-b)); }
+
+/* Centered dialog (welcome) with breathing room around it */
+.modal-back.centered { align-items: center; padding: calc(28px + env(safe-area-inset-top, 0px)) 14px calc(20px + var(--safe-b)); }
+.modal.centered { position: relative; max-width: 520px; max-height: calc(100dvh - 72px); border-radius: 22px; padding: 22px 20px 20px; animation: popIn .35s cubic-bezier(.2, 1.2, .4, 1) both; }
+.modal-back.closing .modal.centered { animation: fadeOut .2s forwards; }
+.close.floating { position: absolute; top: 12px; right: 12px; }
+.news-hero { text-align: center; margin: 4px 0 6px; }
+.news-hero .logo { font-size: 3rem; display: inline-block; filter: drop-shadow(0 0 16px rgba(240, 184, 90, .4)); }
+.news-hero h2 { justify-content: center; font-family: var(--font-title); font-size: 1.35rem; margin: 6px 0 0; }
+
+/* Setup: start button shows status; problems only after trying */
+.btn.big.block[data-act="startGame"] { flex-direction: column; gap: 0; line-height: 1.2; }
+.start-status { font-size: .74rem; font-weight: 600; opacity: .75; }
+.btn.primary.soft { filter: saturate(.35) brightness(.85); box-shadow: none; }
+.msg.err { display: grid; gap: 3px; }
+.hints { display: grid; gap: 6px; margin: 4px 0 2px; }
+.hint-line { font-size: .82rem; color: #ffd9a8; background: rgba(247, 167, 75, .1); border-radius: 10px; padding: 7px 10px; }
+.shake { animation: shake .4s; }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+
+/* Settings extras */
+.sub-label { font-size: .8rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 14px 0 8px; }
+.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.preset { display: grid; gap: 2px; text-align: left; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel-2); transition: border-color .2s, background .2s; }
+.preset.on { border-color: var(--gold); background: var(--gold-soft); }
+.preset .sw { display: block; height: 22px; border-radius: 8px; margin-bottom: 6px; background: linear-gradient(90deg, var(--a) 0 50%, var(--b) 50% 100%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .15); }
+.preset small { color: var(--muted); font-size: .72rem; }
+.small-input { min-height: 40px; padding: 8px 12px; margin-bottom: 8px; }
+.light-list { max-height: 300px; gap: 10px; }
+.light-group { display: grid; gap: 4px; }
+.light-group[hidden], .light-item[hidden] { display: none; }
+.lg-head { font-size: .76rem; font-weight: 700; color: var(--gold); position: sticky; top: 0; background: var(--panel-solid); padding: 4px 2px; z-index: 1; }
+.light-item { padding: 7px 10px; }
+.small-btn { min-height: 40px; padding: 6px 12px; }
+
+/* Lovers phone round */
+.pass-card { padding: 24px 18px; border-radius: 20px; background: var(--panel); border: 1px solid var(--line-strong); display: grid; gap: 8px; animation: popIn .4s cubic-bezier(.2, 1.3, .4, 1) both; }
+.pass-card h2 { font-size: 1.35rem; }
+.brand { overflow: hidden; }
+.msg.err { background: rgba(70, 16, 26, .96); border: 1px solid rgba(255, 93, 108, .45); }
+@media (max-width: 360px) { .brand-sub { letter-spacing: .04em; font-size: .72rem; } .top-actions .lang-chip span { padding: 6px 6px; } }
+/* Installed app (home screen): keep clear of the status bar */
+#app { padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
+.game-head { margin-top: calc(-16px - env(safe-area-inset-top, 0px)); padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
