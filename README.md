@@ -19,8 +19,13 @@ It runs entirely in the browser: no account, no server, the game state is stored
 - **Voting** – by show of hands with a counter, or secretly by passing the phone around; mayor, raven, scapegoat and ties handled automatically
 - **All consequences resolved automatically** – broken hearts, hunter shots, nuclear plant, mayor succession, transformations
 - **Undo** for every step, **auto-save**, chronicle and full reveal at the end
-- **Home Assistant** (optional) – lights go bright by day, dim red at night, pulse for the werewolves, flash on deaths
-  and glow in the winners' colour; afterwards the previous state is restored. Uses the regular HA login (HTTPS required).
+- **Home Assistant** (optional) – lights go bright by day and dim at night, pulse for the werewolves, flash on deaths
+  and glow in the winners' colour; afterwards the previous state is restored. Five light moods (Classic, Ember, Moonlit,
+  Witch wood, Cinema), lights grouped by room with search. Uses the regular HA login (HTTPS required).
+- **Lovers without a game master** – after Cupid's choice the phone goes around once in the first night;
+  the lovers see their partner, everyone else sees "nothing new"
+- **House rules** – mayor succession (successor or new election), werewolves must kill, seer sees team or role, and more
+- **Fullscreen** – button in the game header; on iPhone add the app to the home screen
 - **Fully bilingual** – switch German/English on every screen, even mid-game
 
 ## Project structure
@@ -28,6 +33,7 @@ It runs entirely in the browser: no account, no server, the game state is stored
 | File | Contents |
 |---|---|
 | `index.html` | Page skeleton |
+| `manifest.webmanifest`, `icon.svg` | Lets the app be installed to the home screen (starts in fullscreen) |
 | `css/style.css` | Styles and animations (colour variables at the top) |
 | `js/roles.js` | **All roles and the night order** – this is where you extend the game |
 | `js/i18n.js` | All UI texts in German and English |

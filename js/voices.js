@@ -46,7 +46,9 @@
       'dayStart': 'ae7013b62299462290138de8edee8b76',
       'mayor': '7c416e896a2f44c6b121384ab0a8058b',
       'cleaner': 'e77e39a16dd14b428baeef3d72bc96ca',
-      'eyesOpen': '275feca96dc74478a3444b5b029085c9'
+      'eyesOpen': '275feca96dc74478a3444b5b029085c9',
+      'passStart': 'f6ca8dd4a1344d9d89cbfaf0b473b5ee',
+      'passEnd': '672feba81f184075b1e1204a3fd5a441'
     },
     en: {
       'step-amor-wake': '97bca2321b654fe5bf15b9aa0704ca13',
@@ -90,7 +92,9 @@
       'dayStart': '2ffa4a0a8dbe4e0695325cbbd70acb49',
       'mayor': '7b63061fe26c43268d51e5d25c06f514',
       'cleaner': 'e8a0b421c0c1419395ea6bc7e665c672',
-      'eyesOpen': 'cb3bf0b32e7f4c32901cb8b3204c475c'
+      'eyesOpen': 'cb3bf0b32e7f4c32901cb8b3204c475c',
+      'passStart': 'd9cb687e7f4f402096a0dc3aa99173cd',
+      'passEnd': 'f07d0990453241f5b22c64b367cc688c'
     }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);
