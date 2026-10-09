@@ -461,3 +461,6 @@ body.auto-blank .game-head { opacity: .25; transition: opacity .6s; }
 /* Installed app (home screen): keep clear of the status bar */
 #app { padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
 .game-head { margin-top: calc(-16px - env(safe-area-inset-top, 0px)); padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+/* No pull-to-refresh: pulling down must never reload the page (Chrome uses the root element) */
+html, body { overscroll-behavior-y: none; }
+.modal, .light-list { overscroll-behavior: contain; }
