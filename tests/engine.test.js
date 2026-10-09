@@ -1,9 +1,10 @@
-/* Automatische Tests der Spiel-Engine.  Ausführen:  node tests/engine.test.js
-   1) Gezielte Szenarien (u. a. alle Fehler aus Version 1)
-   2) Tausende Zufallsspiele mit zufälligen Rollen und Entscheidungen        */
+/* Automated tests for the game engine.  Run:  node tests/engine.test.js
+   1) Targeted scenarios (including every bug found in version 1)
+   2) Thousands of random games with random roles and decisions            */
 'use strict';
 require('../js/roles.js');
 const W = require('../js/engine.js');
+const I = require('../js/i18n.js');
 
 let failed = 0, passed = 0;
 function check(label, cond, extra) {
@@ -11,7 +12,7 @@ function check(label, cond, extra) {
   else { failed++; console.log('✗', label, extra !== undefined ? JSON.stringify(extra) : ''); }
 }
 
-/** Spiel mit fester Rollenzuteilung anlegen: {Name: rolleId} in Sitzreihenfolge. */
+/** Create a game with fixed roles: {name: roleId} in seating order. */
 function game(map, settings) {
   const namesList = Object.keys(map);
   const counts = {};
@@ -25,7 +26,7 @@ function game(map, settings) {
 const id = (s, n) => s.players.find(p => p.name === n).id;
 const isAlive = (s, n) => s.players.find(p => p.name === n).alive;
 
-/** Nacht mit Entscheidungen durchspielen: {stepId: [Namen] | true | {heal, poison:Name}} */
+/** Play a night with decisions: {stepId: [names] | true | {heal, poison: name}} */
 function night(s, choices = {}) {
   if (s.screen !== 'night') W.startNight(s);
   let guard = 0;
@@ -49,191 +50,233 @@ function resolveAll(s, picks = []) {
 }
 function lynchByName(s, n) { s.round = Math.max(1, s.round); W.toDay(s); if (s.screen === 'mayor') W.electMayor(s, null); W.lynch(s, id(s, n)); }
 
-// ======================================================= Szenarien
+// ======================================================= Scenarios
 (function scenarios() {
   let s;
 
-  // V1-Bug 6: Sieg in der Nacht beendet das Spiel sauber
+  // v1 bug 6: a win during the night ends the game cleanly
   s = game({ A: 'werwolf', B: 'werwolf', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner' });
   night(s, { werwoelfe: ['C'] });
-  check('Nacht-Sieg der Werwölfe bei Gleichstand', s.screen === 'over' && s.winner.team === 'wolf', s.screen);
+  check('Werewolves win at night on parity', s.screen === 'over' && s.winner.team === 'wolf', s.screen);
 
-  // V1-Bug 3: Amor verändert keine fremden Rollen; Wölfe können sich nicht gegenseitig wählen
+  // v1 bug 3: Cupid changes no other roles; wolves cannot target each other
   s = game({ A: 'werwolf', B: 'werwolf', C: 'amor', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner', G: 'dorfbewohner' });
   W.startNight(s);
   W.submitStep(s, [id(s, 'A'), id(s, 'D')]); // Amor
-  check('Liebende-Schritt folgt', W.currentStep(s).id === 'liebende');
+  check('Lovers step follows', W.currentStep(s).id === 'liebende');
   W.submitStep(s, null);
   const ws = W.currentStep(s);
-  check('Wolf-Ziele ohne Wölfe', ws.id === 'werwoelfe' && !ws.targets.includes(id(s, 'B')) && !ws.targets.includes(id(s, 'A')), ws.targets);
-  check('Gemischte Liebende erkannt', W.loversMixed(s));
-  check('Rolle Werwolf unverändert', W.ROLE.werwolf.team === 'wolf');
+  check('Wolf targets exclude wolves', ws.id === 'werwoelfe' && !ws.targets.includes(id(s, 'B')) && !ws.targets.includes(id(s, 'A')), ws.targets);
+  check('Mixed lovers detected', W.loversMixed(s));
+  check('Werewolf role unchanged', W.ROLE.werwolf.team === 'wolf');
 
-  // V1-Bug 4: Leibwächter darf nicht zweimal hintereinander dieselbe Person schützen; Priester überschreibt nichts
+  // v1 bug 4: the bodyguard cannot protect the same person twice in a row; the priest overwrites nothing
   s = game({ A: 'werwolf', B: 'leibwaechter', C: 'priester', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
-  night(s, { leibwaechter: ['D'], werwoelfe: ['D'] }); // Priester überspringt
-  check('Leibwächter rettet trotz Priester-Skip', isAlive(s, 'D'));
+  night(s, { leibwaechter: ['D'], werwoelfe: ['D'] }); // priest skips
+  check('Bodyguard saves despite priest skip', isAlive(s, 'D'));
   W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
   const lw = W.currentStep(s);
-  check('Leibwächter-Sperre aktiv', lw.id === 'leibwaechter' && !lw.targets.includes(id(s, 'D')), lw.targets);
+  check('Bodyguard repeat block active', lw.id === 'leibwaechter' && !lw.targets.includes(id(s, 'D')), lw.targets);
 
-  // V1-Bug 5: Verfluchter wird wirklich Werwolf
+  // v1 bug 5: the cursed really turns into a werewolf
   s = game({ A: 'werwolf', B: 'verfluchter', C: 'seherin', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
   night(s, { werwoelfe: ['B'] });
-  check('Verfluchter lebt & ist Wolf', isAlive(s, 'B') && s.players[1].flags.wolf);
-  check('Seherin sieht verwandelten Verfluchten als Wolf', W.stepResult(s, 'seherin', [id(s, 'B')]).good === false);
+  check('Cursed survives & is a wolf', isAlive(s, 'B') && s.players[1].flags.wolf);
+  check('Seer sees the turned cursed as a wolf', W.stepResult(s, 'seherin', [id(s, 'B')]).good === false);
 
-  // V1-Bug 7: Jäger stirbt nachts → Schuss, danach normaler Tag (Bürgermeisterwahl!)
+  // v1 bug 7: hunter dies at night → shot, then a normal day (mayor election!)
   s = game({ A: 'werwolf', B: 'werwolf', C: 'jaeger', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner', G: 'dorfbewohner' });
   night(s, { werwoelfe: ['C'] });
-  check('Jäger-Unterbrechung', s.screen === 'interrupt' && s.queue[0].type === 'jaeger');
+  check('Hunter interrupt', s.screen === 'interrupt' && s.queue[0].type === 'jaeger');
   resolveAll(s, ['A']);
-  check('Nach Schuss: Morgen statt Tagesende', s.screen === 'morning' && !isAlive(s, 'A'), s.screen);
+  check('After the shot: morning instead of end of day', s.screen === 'morning' && !isAlive(s, 'A'), s.screen);
   W.toDay(s);
-  check('Bürgermeisterwahl findet statt', s.screen === 'mayor');
+  check('Mayor election happens', s.screen === 'mayor');
 
-  // V1-Bug 8: Jäger erschießt Jäger → beide Schüsse
+  // v1 bug 8: hunter shoots hunter → both shots happen
   s = game({ A: 'werwolf', B: 'werwolf', C: 'jaeger', D: 'jaeger', E: 'dorfbewohner', F: 'dorfbewohner', G: 'dorfbewohner', H: 'dorfbewohner' });
   lynchByName(s, 'C');
   resolveAll(s, ['D', 'A']);
-  check('Kettenschuss Jäger→Jäger→Wolf', !isAlive(s, 'D') && !isAlive(s, 'A') && s.screen === 'afterLynch', s.screen);
+  check('Chain shot hunter→hunter→wolf', !isAlive(s, 'D') && !isAlive(s, 'A') && s.screen === 'afterLynch', s.screen);
 
-  // V1-Bug 9: Gebissener Jäger schießt am Abend
+  // v1 bug 9: a bitten hunter shoots in the evening
   s = game({ A: 'vampir', B: 'jaeger', C: 'werwolf', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner', G: 'dorfbewohner' });
   night(s, { vampire: ['B'], werwoelfe: ['D'] });
   W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
-  check('Gebissener Jäger: Abendschuss', s.screen === 'interrupt' && s.queue[0].type === 'jaeger', s.screen);
+  check('Bitten hunter: evening shot', s.screen === 'interrupt' && s.queue[0].type === 'jaeger', s.screen);
   resolveAll(s, ['C']);
-  check('Danach Abend-Bildschirm', s.screen === 'dusk', s.screen);
+  check('Then the evening screen', s.screen === 'dusk', s.screen);
 
-  // V1-Bug 10: kein Sieg, solange der Jäger noch schießen darf
+  // v1 bug 10: no win while the hunter may still shoot
   s = game({ A: 'werwolf', B: 'jaeger', C: 'dorfbewohner' });
   lynchByName(s, 'B');
-  check('Kein vorzeitiger Wolfsieg', s.screen === 'interrupt');
+  check('No premature wolf win', s.screen === 'interrupt');
   resolveAll(s, ['A']);
-  check('Jäger rettet das Dorf', s.winner && s.winner.team === 'dorf');
+  check('Hunter saves the village', s.winner && s.winner.team === 'dorf');
 
-  // V1-Bug 11: Liebende im selben Lager blockieren keinen Dorfsieg
+  // v1 bug 11: lovers on the same side do not block a village win
   s = game({ A: 'werwolf', B: 'amor', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner' });
   W.startNight(s); W.submitStep(s, [id(s, 'C'), id(s, 'D')]); W.submitStep(s, null); W.submitStep(s, [id(s, 'E')]);
   lynchByName(s, 'A');
-  check('Dorf gewinnt trotz Liebespaar', s.winner && s.winner.team === 'dorf');
+  check('Village wins despite lovers', s.winner && s.winner.team === 'dorf');
 
-  // Gemischte Liebende gewinnen zu zweit
+  // mixed lovers win as the last two
   s = game({ A: 'werwolf', B: 'amor', C: 'dorfbewohner', D: 'dorfbewohner' }, { wolvesParity: false });
   W.startNight(s); W.submitStep(s, [id(s, 'A'), id(s, 'C')]); W.submitStep(s, null); W.submitStep(s, [id(s, 'B')]);
-  check('Liebende: noch kein Sieg', !s.winner, s.winner);
+  check('Lovers: no win yet', !s.winner, s.winner);
   lynchByName(s, 'D');
-  check('Liebende gewinnen', s.winner && s.winner.team === 'liebende', s.winner);
+  check('Lovers win', s.winner && s.winner.team === 'liebende', s.winner);
 
-  // V1-Bug 1: Blumenkind & Reinigungskraft funktionieren
+  // v1 bug 1: flower child & cleaner work
   s = game({ A: 'werwolf', B: 'blumenkind', C: 'reinigungskraft', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf', G: 'dorfbewohner' });
   W.toDay(s); W.electMayor(s, null);
   W.blumenkindProtect(s, id(s, 'D'));
-  check('Blumenkind schützt', !W.voteCandidates(s).includes(id(s, 'D')));
+  check('Flower child protects', !W.voteCandidates(s).includes(id(s, 'D')));
   W.lynch(s, id(s, 'A'));
-  check('Reinigungskraft wird gefragt', s.screen === 'cleaner');
+  check('Cleaner is asked', s.screen === 'cleaner');
   W.cleanerDecide(s, true);
-  check('Rolle verborgen', s.players[0].flags.roleHidden && s.news.lines.some(l => !l.secret && !l.text.includes('Rolle:')));
+  check('Role hidden', s.players[0].flags.roleHidden && s.news.lines.some(l => !l.secret && l.k === 'news.death' && l.p.role === null));
 
-  // Dorfdepp überlebt Lynch
+  // village idiot survives the lynch
   s = game({ A: 'werwolf', B: 'dorfdepp', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner' });
   lynchByName(s, 'B');
-  check('Dorfdepp überlebt', isAlive(s, 'B') && s.players[1].flags.noVote);
+  check('Village idiot survives', isAlive(s, 'B') && s.players[1].flags.noVote);
 
-  // Sündenbock bei Gleichstand
+  // scapegoat on a tie
   s = game({ A: 'werwolf', B: 'suendenbock', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf' });
   W.toDay(s); W.electMayor(s, null); s.day.votes[id(s, 'A')] = 2; s.day.votes[id(s, 'C')] = 2; W.resolveVote(s);
-  check('Sündenbock stirbt bei Gleichstand', !isAlive(s, 'B'));
+  check('Scapegoat dies on a tie', !isAlive(s, 'B'));
 
-  // Bürgermeister entscheidet Gleichstand
+  // mayor breaks a tie
   s = game({ A: 'werwolf', B: 'dorfbewohner', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf' });
   W.toDay(s); W.electMayor(s, id(s, 'B')); s.day.votes[id(s, 'A')] = 2; s.day.votes[id(s, 'C')] = 2; W.resolveVote(s);
-  check('Gleichstand → Bürgermeister', s.screen === 'tie');
+  check('Tie → mayor', s.screen === 'tie');
 
-  // Bürgermeister-Nachfolge
+  // mayor succession
   s = game({ A: 'werwolf', B: 'dorfbewohner', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf' });
   W.toDay(s); W.electMayor(s, id(s, 'B')); W.lynch(s, id(s, 'B'));
-  check('Nachfolge wird gefragt', s.screen === 'interrupt' && s.queue[0].type === 'mayor');
+  check('Succession is asked', s.screen === 'interrupt' && s.queue[0].type === 'mayor');
   resolveAll(s, ['C']);
-  check('Neuer Bürgermeister', s.p.mayor === id(s, 'C'));
+  check('New mayor', s.p.mayor === id(s, 'C'));
 
-  // Ritter mit rostigem Schwert
+  // knight with rusty sword
   s = game({ A: 'ritter', B: 'werwolf', C: 'dorfbewohner', D: 'werwolf', E: 'dorfbewohner', F: 'dorfbewohner', G: 'dorfbewohner', H: 'dorfbewohner' });
   night(s, { werwoelfe: ['A'] });
   W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
   night(s, { werwoelfe: ['C'] });
-  check('Rostiges Schwert tötet nächsten Wolf links', !isAlive(s, 'B') && isAlive(s, 'D'));
+  check('Rusty sword kills the next wolf to the left', !isAlive(s, 'B') && isAlive(s, 'D'));
 
-  // Ältester übersteht ersten Angriff
+  // elder survives the first attack
   s = game({ A: 'werwolf', B: 'aeltester', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
   night(s, { werwoelfe: ['B'] });
-  check('Ältester lebt nach 1. Angriff', isAlive(s, 'B'));
+  check('Elder alive after 1st attack', isAlive(s, 'B'));
   W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
   night(s, { werwoelfe: ['B'] });
-  check('Ältester stirbt beim 2. Angriff', !isAlive(s, 'B'));
+  check('Elder dies on 2nd attack', !isAlive(s, 'B'));
 
-  // Hexe: heilen + vergiften in einer Nacht
+  // witch: heal + poison in one night
   s = game({ A: 'werwolf', B: 'hexe', C: 'dorfbewohner', D: 'dorfbewohner', E: 'werwolf', F: 'dorfbewohner', G: 'dorfbewohner' });
   night(s, { werwoelfe: ['C'], hexe: { heal: true, poison: 'A' } });
-  check('Hexe heilt und vergiftet', isAlive(s, 'C') && !isAlive(s, 'A') && !s.p.hexeHeal && !s.p.hexePoison);
+  check('Witch heals and poisons', isAlive(s, 'C') && !isAlive(s, 'A') && !s.p.hexeHeal && !s.p.hexePoison);
 
-  // Dorfmatratze
+  // village harlot
   s = game({ A: 'werwolf', B: 'dorfmatratze', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner', G: 'werwolf' });
   night(s, { dorfmatratze: ['C'], werwoelfe: ['C'] });
-  check('Matratze stirbt mit Gastgeber', !isAlive(s, 'B') && !isAlive(s, 'C'));
+  check('Harlot dies with her host', !isAlive(s, 'B') && !isAlive(s, 'C'));
   s = game({ A: 'werwolf', B: 'dorfmatratze', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
   night(s, { dorfmatratze: ['C'], werwoelfe: ['B'] });
-  check('Matratze nicht zu Hause', isAlive(s, 'B'));
+  check('Harlot not at home', isAlive(s, 'B'));
 
-  // Urwolf infiziert
+  // alpha wolf infects
   s = game({ A: 'urwolf', B: 'dorfbewohner', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
   night(s, { werwoelfe: ['B'], urwolf: true });
-  check('Infiziert statt getötet', isAlive(s, 'B') && s.players[1].flags.wolf && s.p.urwolfUsed);
+  check('Infected instead of killed', isAlive(s, 'B') && s.players[1].flags.wolf && s.p.urwolfUsed);
 
-  // Wildes Kind wird Wolf
+  // wild child turns into a wolf
   s = game({ A: 'werwolf', B: 'wildeskind', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
   night(s, { wildeskind: ['C'], werwoelfe: ['C'] });
-  check('Wildes Kind verwandelt', s.players[1].flags.wolf);
+  check('Wild child turned', s.players[1].flags.wolf);
 
-  // Engel stirbt am ersten Tag
+  // angel dies on the first day
   s = game({ A: 'werwolf', B: 'engel', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner' });
   lynchByName(s, 'B');
-  check('Engel gewinnt', s.winner && s.winner.team === 'engel');
+  check('Angel wins', s.winner && s.winner.team === 'engel');
 
-  // Weißer Werwolf als letzter
+  // white werewolf as last survivor
   s = game({ A: 'weisserwolf', B: 'werwolf', C: 'dorfbewohner' }, { wolvesParity: false });
   night(s, { werwoelfe: ['C'] });
-  check('Weißer W. + Wolf: noch kein Sieg', !s.winner, s.winner);
+  check('White wolf + wolf: no win yet', !s.winner, s.winner);
   W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
   night(s, { weisserwolf: ['B'] });
-  check('Weißer Werwolf gewinnt allein', s.winner && s.winner.team === 'solo', s.winner);
+  check('White werewolf wins alone', s.winner && s.winner.team === 'solo', s.winner);
 
-  // AKW
+  // nuclear plant
   s = game({ A: 'werwolf', B: 'akw', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner', G: 'werwolf' });
   lynchByName(s, 'B');
-  check('AKW-Unterbrechung mit Nachbarn', s.screen === 'interrupt' && s.queue[0].suggest.length === 2, s.queue[0]);
+  check('Nuclear plant interrupt with neighbours', s.screen === 'interrupt' && s.queue[0].suggest.length === 2, s.queue[0]);
   resolveAll(s, [['C', 'D']]);
-  check('AKW tötet zwei', !isAlive(s, 'C') && !isAlive(s, 'D'));
+  check('Nuclear plant kills two', !isAlive(s, 'C') && !isAlive(s, 'D'));
 
-  // Bär
+  // bear
   s = game({ A: 'dorfbewohner', B: 'baerenfuehrer', C: 'werwolf', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
   night(s, { werwoelfe: ['E'] });
-  check('Bär brummt', s.news.lines.some(l => l.text.includes('brummt')));
+  check('Bear growls', s.news.lines.some(l => l.k === 'news.bearGrowl'));
 
-  // Rabe
+  // raven
   s = game({ A: 'werwolf', B: 'rabe', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
   night(s, { rabe: ['C'], werwoelfe: ['D'] });
   W.toDay(s); W.electMayor(s, null);
-  check('Rabe +2', W.voteTotals(s)[id(s, 'C')] === 2);
+  check('Raven +2', W.voteTotals(s)[id(s, 'C')] === 2);
 
-  // Tote Rollen werden zum Schein aufgerufen
+  // dead roles are called for show
   s = game({ A: 'werwolf', B: 'seherin', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf', G: 'dorfbewohner' });
   lynchByName(s, 'B'); W.endDay(s);
-  check('Tote Seherin: Schein-Aufruf', W.currentStep(s).id === 'seherin' && W.currentStep(s).status === 'fake');
+  check('Dead seer: fake call', W.currentStep(s).id === 'seherin' && W.currentStep(s).status === 'fake');
+
+  // no game master: the cleaner is asked for show even when dead
+  s = game({ A: 'werwolf', B: 'reinigungskraft', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf', G: 'dorfbewohner' }, { mode: 'auto' });
+  lynchByName(s, 'B'); if (s.screen === 'cleaner') W.cleanerDecide(s, false); W.endDay(s); night(s, { werwoelfe: ['C'] }); W.toDay(s); W.lynch(s, id(s, 'D'));
+  check('Auto: fake cleaner question', s.screen === 'cleaner' && s.day.cleanerActive === false);
+  W.cleanerDecide(s, true);
+  check('Auto: fake question hides nothing', !s.players[3].flags.roleHidden);
+
+  // secret pass-around vote (mayor counts double)
+  s = game({ A: 'werwolf', B: 'dorfbewohner', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'werwolf' }, { voteMode: 'pass' });
+  s.round = 1; W.toDay(s); W.electMayor(s, id(s, 'B')); W.startVote(s);
+  check('Voter list', s.day.voterList.length === 6);
+  [['A', 'B'], ['B', 'A'], ['C', 'A'], ['D', 'F'], ['E', 'F'], ['F', null]].forEach(([v, x]) => W.castBallot(s, id(s, v), x ? id(s, x) : null));
+  W.tallyBallots(s);
+  check('Pass-around: mayor counts double', W.voteTotals(s)[id(s, 'A')] === 3 && W.voteTotals(s)[id(s, 'F')] === 2);
+  W.resolveVote(s);
+  check('Pass-around: A lynched', !isAlive(s, 'A'));
+
+  // newly turned wolves are shown to the pack
+  s = game({ A: 'werwolf', B: 'verfluchter', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' });
+  night(s, { werwoelfe: ['B'] }); W.toDay(s); W.electMayor(s, null); W.noLynch(s); W.endDay(s);
+  while (W.currentStep(s).id !== 'werwoelfe') W.submitStep(s, null);
+  check('New pack member shown', W.currentStep(s).info.k === 'info.wolvesNew');
+  W.submitStep(s, [id(s, 'C')]);
+  check('New-wolf mark cleared afterwards', !s.players[1].flags.newWolf);
+
+  // take over as game master
+  s = game({ A: 'werwolf', B: 'dorfbewohner', C: 'dorfbewohner', D: 'dorfbewohner' }, { mode: 'auto' });
+  W.takeOverAsGM(s);
+  check('Takeover', s.settings.mode === 'gm');
+
+  // balance bar with vampires
+  const bp = W.balanceParts({ werwolf: 2, vampir: 1, seherin: 1, dorfbewohner: 4 });
+  check('Balance knows vampires', bp.vampir > 0 && bp.wolf > 0 && bp.share > 0 && bp.share < 1);
 })();
 
-// ======================================================= Zufallsspiele
+/** Checks that a message translates cleanly in both languages. */
+function checkMsg(msg) {
+  for (const l of ['de', 'en']) {
+    const txt = I.msg(msg, l);
+    if (!txt || txt === msg.k || /\{\w+\}|undefined|\[object/.test(txt)) throw new Error(`Text ${l} ${msg.k}: ${txt}`);
+  }
+}
+
+// ======================================================= Random games
 (function fuzz() {
   const ids = W.ROLE ? Object.keys(W.ROLE) : [];
   const rnd = n => Math.floor(Math.random() * n);
@@ -302,32 +345,36 @@ function lynchByName(s, n) { s.round = Math.max(1, s.round); W.toDay(s); if (s.s
             else W.endDay(s);
             break;
           case 'dusk': W.startNight(s); break;
-          default: throw new Error('Unbekannter Bildschirm ' + s.screen);
+          default: throw new Error('Unknown screen ' + s.screen);
         }
-        // Invarianten
-        if (s.players.some(p => !p.alive && p.flags.bitten)) throw new Error('Toter ist gebissen');
-        if (s.p.mayor && !s.players.find(p => p.id === s.p.mayor).alive) throw new Error('Toter Bürgermeister');
+        // every text must work in both languages
+        s.news.lines.forEach(checkMsg);
+        // invariants
+        if (s.players.some(p => !p.alive && p.flags.bitten)) throw new Error('Dead player is bitten');
+        if (s.p.mayor && !s.players.find(p => p.id === s.p.mayor).alive) throw new Error('Dead mayor');
         if (s.p.lovers.length === 2 && s.screen !== 'interrupt') {
           const [a, b] = s.p.lovers.map(x => s.players.find(p => p.id === x));
-          if (a.alive !== b.alive) throw new Error('Nur ein Liebender lebt');
+          if (a.alive !== b.alive) throw new Error('Only one lover alive');
         }
       }
-      if (s.screen !== 'over') { stuck++; if (stuck < 4) console.log('hängt', s.screen, s.round, JSON.stringify(counts)); }
+      s.log.forEach(l => { checkMsg(l); checkMsg(l.label); });
+      if (s.winner) { checkMsg(s.winner.title); checkMsg(s.winner.text); }
+      if (s.screen !== 'over') { stuck++; if (stuck < 4) console.log('stuck', s.screen, s.round, JSON.stringify(counts)); }
       else {
         endings[s.winner.team] = (endings[s.winner.team] || 0) + 1;
-        // Siegerprüfung: Dorf gewinnt nie mit lebendem Wolf
-        if (s.winner.team === 'dorf' && W.alive(s).some(p => W.team(s, p) === 'wolf' && p.roleId !== 'guenstling')) throw new Error('Dorfsieg mit lebendem Wolf');
+        // win check: the village never wins with a living wolf
+        if (s.winner.team === 'dorf' && W.alive(s).some(p => W.team(s, p) === 'wolf' && p.roleId !== 'guenstling')) throw new Error('Village win with a living wolf');
       }
       games++;
     } catch (e) {
       errors++;
-      if (errors < 5) console.log('FEHLER', e.stack.split('\n').slice(0, 3).join(' | '), JSON.stringify(counts));
+      if (errors < 5) console.log('ERROR', e.stack.split('\n').slice(0, 3).join(' | '), JSON.stringify(counts));
     }
   }
-  check('Zufallsspiele ohne Fehler', errors === 0, errors);
-  check('Zufallsspiele enden alle', stuck === 0, stuck);
-  console.log(`Zufallsspiele: ${games}, Enden:`, endings);
+  check('Random games without errors', errors === 0, errors);
+  check('All random games end', stuck === 0, stuck);
+  console.log(`Random games: ${games}, endings:`, endings);
 })();
 
-console.log(`\n${passed} bestanden, ${failed} fehlgeschlagen`);
+console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
