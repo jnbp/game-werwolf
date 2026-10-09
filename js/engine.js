@@ -13,7 +13,8 @@
   const { ROLES, NIGHT_STEPS, TEAMS } = DATA;
   const ROLE = Object.fromEntries(ROLES.map(r => [r.id, r]));
   const STEP = Object.fromEntries(NIGHT_STEPS.map(s => [s.id, s]));
-  const KILLER_ROLES = ['werwolf', 'urwolf', 'wolfsseherin', 'weisserwolf', 'vampir', 'serienmoerder'];
+  const KILLER_ROLES = ['werwolf', 'urwolf', 'wolfsseherin', 'weisserwolf', 'babywolf', 'vampir', 'serienmoerder'];
+  const isKiller = id => KILLER_ROLES.includes(id) || !!(ROLE[id] && ROLE[id].custom && ['wolf', 'vampir'].includes(ROLE[id].team));
 
   const DEFAULT_SETTINGS = {
     revealRoles: true,      // reveal the role of dead players publicly
@@ -100,8 +101,8 @@
     for (const [id, k] of Object.entries(counts)) {
       if (k > (ROLE[id].max || 1)) errors.push(M('val.max', { role: { r: id }, m: ROLE[id].max || 1 }));
     }
-    if (!KILLER_ROLES.some(id => c(id) > 0)) errors.push(M('val.noEvil'));
-    const evil = c('werwolf') + c('urwolf') + c('wolfsseherin') + c('weisserwolf') + c('vampir') + c('serienmoerder');
+    if (!Object.keys(counts).some(id => c(id) > 0 && isKiller(id))) errors.push(M('val.noEvil'));
+    const evil = Object.keys(counts).filter(isKiller).reduce((a, id) => a + c(id), 0);
     if (n >= 4 && evil > Math.floor(n / 2)) warnings.push(M('warn.manyEvil'));
     if (n >= 8 && evil === 1) warnings.push(M('warn.oneEvil'));
     if (c('freimaurer') === 1) warnings.push(M('warn.mason'));
@@ -181,6 +182,8 @@
   };
 
   function stepMembers(s, stepId, onlyAlive = true) {
+    // the ghost hand only acts after death
+    if (stepId === 'geisterhand') return s.players.filter(p => !p.alive && p.roleId === 'geisterhand');
     const list = onlyAlive ? alive(s) : s.players;
     if (stepId === 'werwoelfe') return list.filter(isWolfish);
     if (stepId === 'liebende') return list.filter(p => s.p.lovers.includes(p.id));
@@ -208,6 +211,7 @@
       }
       case 'hexe': return (s.p.hexeHeal || s.p.hexePoison) ? 'active' : fakeOrSkip;
       case 'fuchs': return s.p.fuchsActive ? 'active' : fakeOrSkip;
+      case 'moench': return s.p.moenchUsed ? fakeOrSkip : 'active';
       case 'weisserwolf': return TARGETS.otherWolves(s, members.map(p => p.id)).length ? 'active' : fakeOrSkip;
     }
     return 'active';
@@ -217,7 +221,8 @@
     s.round += 1;
     s.phase = 'night';
     s.day = null;
-    s.night = { idx: -1, steps: NIGHT_STEPS.slice().sort((a, b) => a.order - b.order).map(x => x.id), sel: {}, results: {} };
+    s.night = { idx: -1, steps: NIGHT_STEPS.slice().sort((a, b) => a.order - b.order).map(x => x.id), sel: {}, results: {}, rage: !!s.p.wolfRage };
+    s.p.wolfRage = false;
     s.screen = 'night';
     log(s, 'log.nightStart', { n: s.round });
     advanceStep(s);
@@ -239,7 +244,9 @@
     const status = stepStatus(s, id);
     const actors = stepMembers(s, id).map(p => p.id);
     const targets = st.targets ? TARGETS[st.targets](s, actors).map(p => p.id) : [];
-    return { id, def: st, status, actors, targets, info: stepInfo(s, id), number: s.night.steps.slice(0, s.night.idx + 1).filter(x => stepStatus(s, x) !== 'skip').length };
+    // enraged pack (wolf cub died): two victims tonight
+    const count = id === 'werwoelfe' && s.night.rage ? Math.min(2, Math.max(1, targets.length)) : (st.count || 0);
+    return { id, def: st, status, actors, targets, count, info: stepInfo(s, id), number: s.night.steps.slice(0, s.night.idx + 1).filter(x => stepStatus(s, x) !== 'skip').length };
   }
 
   function stepInfo(s, id) {
@@ -249,13 +256,17 @@
       case 'guenstling': return M('info.minion', { names: alive(s).filter(isWolfish).map(p => p.name) });
       case 'werwoelfe': {
         const fresh = stepMembers(s, 'werwoelfe').filter(p => p.flags.newWolf).map(p => p.name);
-        return fresh.length ? M('info.wolvesNew', { names: stepMembers(s, 'werwoelfe').map(p => p.name), fresh })
-                            : M('info.wolves', { names: stepMembers(s, 'werwoelfe').map(p => p.name) });
+        const pack = stepMembers(s, 'werwoelfe').map(p => p.name);
+        if (s.night.rage) return M('info.wolvesRage', { names: pack });
+        return fresh.length ? M('info.wolvesNew', { names: pack, fresh }) : M('info.wolves', { names: pack });
       }
       case 'urwolf': return M('info.urwolf', { name: name(s, (s.night.sel.werwoelfe || [])[0]) });
       case 'hexe': {
         const t = (s.night.sel.werwoelfe || [])[0];
-        return t ? M(s.night.sel.urwolf ? 'info.hexeInfect' : 'info.hexe', { name: name(s, t) }) : M('info.hexeNone');
+        if (!t) return M('info.hexeNone');
+        const all = (s.night.sel.werwoelfe || []).map(x => name(s, x));
+        if (all.length > 1) return M('info.hexeTwo', { names: all, name: all[0] });
+        return M(s.night.sel.urwolf ? 'info.hexeInfect' : 'info.hexe', { name: name(s, t) });
       }
       case 'weisserwolf': return M('info.white');
       case 'leibwaechter': return s.p.bgLast ? M('info.bg', { name: name(s, s.p.bgLast) }) : null;
@@ -340,17 +351,17 @@
     if (s.p.rusty && byId(s, s.p.rusty).alive) die(s.p.rusty, 'ritter');
     s.p.rusty = null;
 
-    // werewolves (+ alpha wolf)
-    const wt = first('werwoelfe');
-    if (wt) {
+    // werewolves (+ alpha wolf); after the wolf cub died they take two victims
+    const wolfVictims = (sel.werwoelfe || []).slice(0, s.night.rage ? 2 : 1);
+    if (sel.urwolf === true && wolfVictims.length) s.p.urwolfUsed = true;
+    wolfVictims.forEach((wt, i) => {
       const t = byId(s, wt);
-      const infect = sel.urwolf === true;
-      if (infect) s.p.urwolfUsed = true;
+      const infect = sel.urwolf === true && i === 0;
       let reason = null;
       if (['vampir', 'serienmoerder'].includes(t.roleId)) reason = M('reason.immune', { role: { r: t.roleId } });
       else if (blocked(wt)) reason = blocked(wt);
       else if (t.roleId === 'rotkaeppchen' && hasAliveRole(s, 'jaeger')) reason = M('reason.redhood');
-      else if (hexe.heal) reason = M('reason.healed');
+      else if (hexe.heal && i === 0) reason = M('reason.healed');
       else if (t.flags.extraLife) { t.flags.extraLife = false; reason = M('reason.elder'); }
       if (reason) say(s, 'news.attackFailed', { name: t.name, reason }, true);
       else if (t.roleId === 'verfluchter' && !t.flags.wolf) {
@@ -363,7 +374,7 @@
         die(wt, 'wolf');
         if (visit === wt) die(matratze.id, 'matratze');
       }
-    }
+    });
     if (hexe.heal) s.p.hexeHeal = false;
 
     // white werewolf
@@ -386,6 +397,14 @@
     }
     // witch's poison (always works)
     if (hexe.poison) { die(hexe.poison, 'gift'); s.p.hexePoison = false; }
+    // monk's holy water (once per game, always works): a werewolf dies – otherwise the monk himself
+    const holy = first('moench');
+    const monk = firstAlive(s, 'moench');
+    if (holy && monk) {
+      s.p.moenchUsed = true;
+      if (isWolfish(byId(s, holy))) die(holy, 'weihwasser');
+      else die(monk.id, 'moench');
+    }
 
     // lasting night effects
     s.p.bgLast = first('leibwaechter');
@@ -399,6 +418,10 @@
     if (bear) say(s, neighbours(s, bear.id).some(id => appearsWolf(byId(s, id))) ? 'news.bearGrowl' : 'news.bearQuiet');
     if (s.p.raven && byId(s, s.p.raven).alive) say(s, 'news.raven', { name: name(s, s.p.raven) });
 
+    // ghost hand: a drawn sign (image data URL) is shown to everyone in the morning
+    const sign = sel.geisterhand;
+    if (typeof sign === 'string' && sign.startsWith('data:image/')) { s.news.sign = sign; say(s, 'news.ghostSign'); }
+
     s.phase = 'day';
     s.after = 'morning';
     continueFlow(s);
@@ -408,7 +431,7 @@
   // Icon per cause of death; the texts live in i18n.js (cause.<id>.pub / .sec).
   const CAUSE = {
     wolf: '🐺', gift: '🧪', vampir: '🦇', serienmoerder: '🔪', weisserwolf: '🤍', matratze: '💃',
-    ritter: '⚔️', liebe: '💔', jaeger: '🏹', akw: '☢️', lynch: '⚖️', spielleitung: '✋'
+    ritter: '⚔️', liebe: '💔', jaeger: '🏹', akw: '☢️', lynch: '⚖️', spielleitung: '✋', weihwasser: '💧', moench: '💧'
   };
   const PUBLIC_CAUSES = ['liebe', 'jaeger', 'akw', 'lynch', 'spielleitung', 'vampir'];
 
@@ -426,6 +449,8 @@
 
     // angel
     if (p.roleId === 'engel' && s.round === 1 && !s.engelWin) s.engelWin = p.id;
+    // wolf cub: the pack takes two victims next night
+    if (p.roleId === 'babywolf') { s.p.wolfRage = true; say(s, 'news.babyRage', {}, true); }
     // knight
     if (p.roleId === 'ritter' && cause === 'wolf') {
       const victim = nextWolfClockwise(s, p.id);
@@ -702,6 +727,33 @@
     log(s, 'log.takeover');
   }
 
+  // ------------------------------------------------------------ Custom roles
+  /* Own roles without built-in rules: the app only reminds the game master to call them.
+     def = { id: 'c_…', name, emoji, team, when: 'night' | 'first' | 'day' | 'none', desc,
+             wake, wakeEN, sleep, sleepEN }  (narration texts are prepared by the UI) */
+  const CUSTOM_WEIGHT = { dorf: 1, wolf: -6, vampir: -6, solo: -3 };
+  function setCustomRoles(list) {
+    for (let i = ROLES.length - 1; i >= 0; i--) if (ROLES[i].custom) { delete ROLE[ROLES[i].id]; ROLES.splice(i, 1); }
+    for (let i = NIGHT_STEPS.length - 1; i >= 0; i--) if (NIGHT_STEPS[i].custom) { delete STEP[NIGHT_STEPS[i].id]; NIGHT_STEPS.splice(i, 1); }
+    (list || []).forEach(d => {
+      if (!d || !d.id || ROLE[d.id] || !TEAMS[d.team]) return;
+      const atNight = d.when === 'night' || d.when === 'first';
+      const r = {
+        id: d.id, custom: true, name: d.name, nameEN: d.name, emoji: d.emoji || '🎭', team: d.team,
+        appearsWolf: d.team === 'wolf', max: 10, weight: CUSTOM_WEIGHT[d.team] || 0, tags: ['eigene'],
+        wakes: [...(d.team === 'wolf' ? ['werwoelfe'] : []), ...(atNight ? [d.id] : [])],
+        desc: d.desc || '', descEN: d.desc || '', dayReminder: d.when === 'day'
+      };
+      ROLES.push(r); ROLE[r.id] = r;
+      if (atNight) {
+        const st = { id: d.id, custom: true, order: 55, when: d.when === 'first' ? 'first' : 'always', kind: 'info',
+          title: d.name, titleEN: d.name, wake: d.wake || d.name, wakeEN: d.wakeEN || d.wake || d.name,
+          sleep: d.sleep || '', sleepEN: d.sleepEN || d.sleep || '' };
+        NIGHT_STEPS.push(st); STEP[st.id] = st;
+      }
+    });
+  }
+
   const API = {
     ROLE, STEP, TEAMS, DEFAULT_SETTINGS, KILLER_ROLES,
     byId, role, alive, name, names, team, neighbours, phaseMsg, isWolfish, appearsWolf, loversMixed, R,
@@ -709,7 +761,7 @@
     startNight, currentStep, stepResult, submitStep, stepStatus,
     interruptTargets, resolveInterrupt, continueFlow, checkWin,
     toDay, electMayor, loverPassStart, loverPassInfo, loverPassNext, blumenkindProtect, voteCandidates, voteTotals, voters, startVote, castBallot, tallyBallots, resolveVote, lynch, cleanerDecide, noLynch, richterSecondVote, endDay,
-    gmKill, gmRevive, takeOverAsGM
+    gmKill, gmRevive, takeOverAsGM, setCustomRoles
   };
   global.WW = API;
   if (typeof module !== 'undefined') module.exports = API;
