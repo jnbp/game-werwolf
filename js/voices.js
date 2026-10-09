@@ -48,7 +48,11 @@
       'cleaner': 'e77e39a16dd14b428baeef3d72bc96ca',
       'eyesOpen': '275feca96dc74478a3444b5b029085c9',
       'passStart': 'f6ca8dd4a1344d9d89cbfaf0b473b5ee',
-      'passEnd': '672feba81f184075b1e1204a3fd5a441'
+      'passEnd': '672feba81f184075b1e1204a3fd5a441',
+      'step-moench-wake': '4d544792c1f04d85a0b4ab81166d145c',
+      'step-moench-sleep': '4258664392f64baea9f43d2f7d2af493',
+      'step-geisterhand-wake': 'dc116184efb14cfeb6ed9acec98e0f24',
+      'step-geisterhand-sleep': '8847c6f825554940bf9af092f71b3105'
     },
     en: {
       'step-amor-wake': '97bca2321b654fe5bf15b9aa0704ca13',
@@ -94,7 +98,11 @@
       'cleaner': 'e8a0b421c0c1419395ea6bc7e665c672',
       'eyesOpen': 'cb3bf0b32e7f4c32901cb8b3204c475c',
       'passStart': 'd9cb687e7f4f402096a0dc3aa99173cd',
-      'passEnd': 'f07d0990453241f5b22c64b367cc688c'
+      'passEnd': 'f07d0990453241f5b22c64b367cc688c',
+      'step-moench-wake': '4de7bf5a0edd4f8ea9886a9d0121b395',
+      'step-moench-sleep': '37e729c85d474e7fae7cde604624e844',
+      'step-geisterhand-wake': 'b266843191f4406388a7ab7fb2b02186',
+      'step-geisterhand-sleep': 'ecf68f4f2ad54831a1b82bb7fd6ca80d'
     }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

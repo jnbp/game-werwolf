@@ -5,13 +5,15 @@
   global.WW_CHANGELOG = [
     {
       version: '2.0',
-      seen: '2.0-c',
+      seen: '2.0-d',
       de: {
         date: 'Oktober 2026',
         intro: 'Komplett neu gebaut: doppelt so viele Rollen, eine echte Erzählerstimme, zwei Sprachen – und auf Wunsch spielt ihr ganz ohne Spielleitung.',
         sections: [
-          { title: '🐺 33 Rollen statt 17', items: [
-            'Neu: Urwolf, Wolfsseherin, Weißer Werwolf, Wildes Kind, Dorfdepp, Ritter, Ältester, Rotkäppchen, Fuchs, Bärenführer, Richter, Sündenbock, Rabe, Detektiv, Engel, Serienmörder.',
+          { title: '🐺 36 Rollen statt 17 – und eigene', items: [
+            'Neu: Baby-Werwolf, Mönch, Geisterhand, Urwolf, Wolfsseherin, Weißer Werwolf, Wildes Kind, Dorfdepp, Ritter, Ältester, Rotkäppchen, Fuchs, Bärenführer, Richter, Sündenbock, Rabe, Detektiv, Engel, Serienmörder.',
+            'Eigene Rollen: Name, Symbol und Team festlegen – die App erinnert nachts oder tagsüber daran, sie aufzurufen.',
+            'Die Geisterhand malt ihr geheimes Zeichen direkt aufs Handy, am Morgen sieht es das ganze Dorf.',
             'Balance-Leiste über den Rollen zeigt, ob Dorf, Werwölfe, Vampire und Einzelgänger fair verteilt sind.'
           ] },
           { title: '📱 Spielen ohne Spielleitung', items: [
@@ -40,8 +42,10 @@
         date: 'October 2026',
         intro: 'Rebuilt from scratch: twice as many roles, a real narrator voice, two languages – and if you like, you can play without a game master.',
         sections: [
-          { title: '🐺 33 roles instead of 17', items: [
-            'New: Alpha Wolf, Wolf Seer, White Werewolf, Wild Child, Village Idiot, Knight, Elder, Red Riding Hood, Fox, Bear Tamer, Judge, Scapegoat, Raven, Detective, Angel, Serial Killer.',
+          { title: '🐺 36 roles instead of 17 – plus your own', items: [
+            'New: Wolf Cub, Monk, Ghost Hand, Alpha Wolf, Wolf Seer, White Werewolf, Wild Child, Village Idiot, Knight, Elder, Red Riding Hood, Fox, Bear Tamer, Judge, Scapegoat, Raven, Detective, Angel, Serial Killer.',
+            'Custom roles: choose a name, symbol and team – the app reminds you to call them at night or by day.',
+            'The Ghost Hand draws its secret sign right on the phone; in the morning the whole village sees it.',
             'A balance bar above the roles shows whether village, werewolves, vampires and loners are fairly matched.'
           ] },
           { title: '📱 Play without a game master', items: [
