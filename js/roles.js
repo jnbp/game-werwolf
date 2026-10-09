@@ -251,6 +251,26 @@
       wakes: ['serienmoerder'], weight: -6, tags: ['neu', 'chaos'],
       desc: 'Du spielst allein. Jede Nacht tötest du einen Spieler. Werwölfe können dir nichts anhaben. Du gewinnst als letzter Überlebender.',
       descEN: 'You play alone. Each night you kill a player. Werewolves can\'t hurt you. You win as the last survivor.'
+    },
+    {
+      id: 'babywolf', nameEN: 'Wolf Cub', name: 'Baby-Werwolf', emoji: '🍼', team: 'wolf', appearsWolf: true, isNew: true,
+      wakes: ['werwoelfe'], max: 2, weight: -5, tags: ['neu'],
+      desc: 'Du bist ein junger Werwolf und jagst mit dem Rudel. Wirst du getötet, sind die Werwölfe so wütend und entsetzt, dass sie in der nächsten Nacht zwei Opfer reißen.',
+      descEN: 'You are a young werewolf and hunt with the pack. If you are killed, the werewolves are so furious and shocked that they take two victims the following night.'
+    },
+    {
+      id: 'moench', nameEN: 'Monk', name: 'Mönch', emoji: '💧', team: 'dorf', isNew: true,
+      wakes: ['moench'], weight: 4, tags: ['neu'],
+      desc: 'Einmal im Spiel wirfst du nachts Weihwasser auf einen Spieler. Ist er ein Werwolf, stirbt er. Ist er keiner, stirbst du.',
+      descEN: 'Once per game you throw holy water at a player at night. If they are a werewolf, they die. If not, you die.',
+      tip: 'Nur einsetzen, wenn du dir sehr sicher bist.',
+      tipEN: 'Only use it when you are very sure.'
+    },
+    {
+      id: 'geisterhand', nameEN: 'Ghost Hand', name: 'Geisterhand', emoji: '✍️', team: 'dorf', isNew: true,
+      wakes: ['geisterhand'], weight: 2, tags: ['neu'],
+      desc: 'Nach deinem Tod erwachst du jede Nacht und hinterlässt ein geheimes Zeichen – gemalt auf dem Handy oder auf Papier. Am Morgen sieht es das ganze Dorf. Keine Buchstaben, keine Namen.',
+      descEN: 'After your death you wake every night and leave a secret sign – drawn on the phone or on paper. In the morning the whole village sees it. No letters, no names.'
     }
   ];
 
@@ -259,7 +279,8 @@
        order    position (small = early)
        when     'first' (night 1 only) | 'always' | 'even' (nights 2, 4, …)
        kind     'pick' (choose players) | 'info' (hint only) |
-                'yesno' | 'hexe' (witch potions)
+                'yesno' | 'hexe' (witch potions) | 'draw' (drawing pad)
+     Custom roles created in the app are added at runtime (engine.js → setCustomRoles).
        count    how many players are chosen
        targets  filter name (see engine.js → TARGETS)
        title/wake/sleep (+ …EN)  narration to read aloud
@@ -317,6 +338,10 @@
       wake: 'Der Rabe erwacht und markiert einen Verdächtigen.',
       sleep: 'Der Rabe schläft wieder ein.',
       titleEN: 'Raven', wakeEN: 'The raven wakes up and marks a suspect.', sleepEN: 'The raven goes back to sleep.' },
+    { id: 'moench', order: 34, when: 'always', kind: 'pick', count: 1, targets: 'others', title: 'Mönch',
+      wake: 'Der Mönch erwacht. Will er heute Nacht sein Weihwasser auf jemanden werfen?',
+      sleep: 'Der Mönch schläft wieder ein.',
+      titleEN: 'Monk', wakeEN: 'The monk wakes up. Will he throw his holy water at someone tonight?', sleepEN: 'The monk goes back to sleep.' },
     { id: 'werwoelfe', order: 40, when: 'always', kind: 'pick', count: 1, targets: 'nonWolf', title: 'Werwölfe',
       wake: 'Die Werwölfe erwachen, erkennen einander und einigen sich lautlos auf ein Opfer.',
       sleep: 'Die Werwölfe schlafen wieder ein.',
@@ -340,7 +365,11 @@
     { id: 'hexe', order: 50, when: 'always', kind: 'hexe', title: 'Hexe',
       wake: 'Die Hexe erwacht und erfährt das Opfer der Werwölfe. Will sie heilen? Will sie vergiften?',
       sleep: 'Die Hexe schläft wieder ein.',
-      titleEN: 'Witch', wakeEN: 'The witch wakes up and learns who the werewolves chose. Will she heal? Will she poison?', sleepEN: 'The witch goes back to sleep.' }
+      titleEN: 'Witch', wakeEN: 'The witch wakes up and learns who the werewolves chose. Will she heal? Will she poison?', sleepEN: 'The witch goes back to sleep.' },
+    { id: 'geisterhand', order: 60, when: 'always', kind: 'draw', title: 'Geisterhand',
+      wake: 'Die Geisterhand erwacht und hinterlässt ein geheimes Zeichen.',
+      sleep: 'Die Geisterhand verschwindet wieder.',
+      titleEN: 'Ghost Hand', wakeEN: 'The ghost hand awakens and leaves a secret sign.', sleepEN: 'The ghost hand fades away again.' }
   ];
 
   const TEAMS = {
