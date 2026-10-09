@@ -45,11 +45,22 @@
   HA.setLights(prefs.haLights || []);
   HA.configure({ preset: prefs.haPreset, effects: prefs.haEffects });
 
-  let setup = Object.assign({ players: [], counts: {}, filter: 'alle' }, store.get(KEY.setup, {}));
+  let setup = Object.assign({ players: [], counts: {}, filter: 'alle', customRoles: [] }, store.get(KEY.setup, {}));
   setup.settings = Object.assign({}, W.DEFAULT_SETTINGS, setup.settings || {});
+  let game = store.get(KEY.game, null);
+
+  /** Custom roles (setup + running game) are registered with the engine, narration texts in both languages. */
+  function registerCustoms(extra) {
+    const all = {};
+    [...((game && game.customRoles) || []), ...(setup.customRoles || []), ...(extra || [])].forEach(d => { all[d.id] = d; });
+    W.setCustomRoles(Object.values(all).map(d => Object.assign({}, d, {
+      wake: I.t('custom.wake', { name: d.name }, 'de'), wakeEN: I.t('custom.wake', { name: d.name }, 'en'),
+      sleep: I.t('custom.sleep', { name: d.name }, 'de'), sleepEN: I.t('custom.sleep', { name: d.name }, 'en')
+    })));
+  }
+  registerCustoms();
   Object.keys(setup.counts).forEach(id => { if (!W.ROLE[id] || !setup.counts[id]) delete setup.counts[id]; });
 
-  let game = store.get(KEY.game, null);
   if (game && (game.v !== 2 || !game.news || (game.news.lines[0] && game.news.lines[0].text))) game = null; // drop saves from early test builds
   if (game) game.settings = Object.assign({}, W.DEFAULT_SETTINGS, game.settings);
   let history = game ? store.get(KEY.hist, []) : [];
@@ -61,7 +72,7 @@
 
   /** Transient UI state (not saved). */
   let tmp = freshTmp();
-  function freshTmp() { return { key: null, sel: [], poisonOpen: false, heal: false, poison: null, seen: false, blumen: false, showSecretLog: false, cardLang: null, qr: false, auto: null, haQuery: '' }; }
+  function freshTmp() { return { key: null, sel: [], poisonOpen: false, heal: false, poison: null, seen: false, blumen: false, showSecretLog: false, cardLang: null, qr: false, auto: null, haQuery: '', drawData: null, drawn: false, custom: null }; }
   let triedStart = false;   // setup problems are only shown after the first attempt to start
   const timer = { total: 0, left: 0, running: false, handle: null, day: null };
   let autoTimers = [];
@@ -232,7 +243,7 @@
       </li>`).join('');
 
     const f = setup.filter;
-    const roles = ROLES.filter(r => f === 'alle' || (f === 'neu' && r.isNew) || (f === 'klassisch' && !r.isNew) || (f === 'gewaehlt' && setup.counts[r.id]));
+    const roles = ROLES.filter(r => f === 'alle' || (f === 'neu' && r.isNew) || (f === 'klassisch' && !r.isNew && !r.custom) || (f === 'gewaehlt' && setup.counts[r.id]));
     const roleCards = roles.map((r, i) => {
       const c = setup.counts[r.id] || 0;
       const R = I.role(r.id);
@@ -240,7 +251,7 @@
       <div class="role-card ${c ? 'active' : ''}" style="--tc:${teamOf(r).color};--i:${Math.min(i, 14)}">
         <button class="head" data-act="roleInfo" data-id="${r.id}">
           <span class="emo">${r.emoji}</span>
-          <span><span class="rname">${esc(R.name)}</span><br><span class="team">${teamName(r.team)}${r.isNew ? ` · <span class="new-txt">${t('setup.new')}</span>` : ''} · ⓘ</span></span>
+          <span><span class="rname">${esc(R.name)}</span><br><span class="team">${teamName(r.team)}${r.custom ? ` · <span class="custom-txt">${t('custom.tag')}</span>` : r.isNew ? ` · <span class="new-txt">${t('setup.new')}</span>` : ''} · ⓘ</span></span>
         </button>
         <div class="stepper">
           <button data-act="roleDec" data-id="${r.id}" ${c ? '' : 'disabled'} aria-label="${t('a11y.less')}">−</button>
@@ -248,7 +259,10 @@
           <button data-act="roleInc" data-id="${r.id}" ${c >= (r.max || 1) ? 'disabled' : ''} aria-label="${t('a11y.more')}">+</button>
         </div>
       </div>`;
-    }).join('') || `<p class="muted small">${t('setup.noRoles')}</p>`;
+    }).join('') + (f === 'alle' || f === 'gewaehlt' ? `
+      <button class="role-card add-custom" data-act="customNew" style="--i:${Math.min(roles.length, 14)}">
+        <span class="plus">＋</span><span>${t('custom.add')}</span>
+      </button>` : '');
 
     if (v.ok) triedStart = false;
     // Problems only appear after the first attempt to start – not when the app opens.
@@ -422,6 +436,7 @@
       const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
       const bytes = Uint8Array.from(bin, (c, i) => c.charCodeAt(0) ^ QR_KEY.charCodeAt(i % QR_KEY.length));
       const o = JSON.parse(new TextDecoder().decode(bytes));
+      if (o.c && !W.ROLE[o.r]) registerCustoms([Object.assign({ id: o.r, when: 'none' }, o.c)]);
       return W.ROLE[o.r] ? o : null;
     } catch (e) { return null; }
   }
@@ -429,7 +444,9 @@
     const box = document.getElementById('qrBox');
     if (!box) return;
     const p = game.players[game.ui.idx];
-    const url = location.origin + location.pathname + '#role=' + encodeRole({ n: p.name, r: p.roleId, g: game.p.guenstlingTeam, l: I.lang });
+    const R = W.ROLE[p.roleId];
+    const extra = R.custom ? { c: { name: R.name, emoji: R.emoji, team: R.team, desc: R.desc } } : {};
+    const url = location.origin + location.pathname + '#role=' + encodeRole(Object.assign({ n: p.name, r: p.roleId, g: game.p.guenstlingTeam, l: I.lang }, extra));
     try {
       await loadScript(QR_LIB);
       const qr = window.qrcode(0, 'M');
@@ -550,6 +567,59 @@
     return `<div class="steps-progress">${visible.map((_, i) => `<i class="${i < pos ? 'done' : i === pos ? 'now' : ''}"></i>`).join('')}</div>`;
   }
 
+  /** Drawing pad for the ghost hand (the drawing survives re-renders via tmp.drawData). */
+  function drawPad() {
+    return `<p class="muted small" style="margin:0 0 10px">${t('draw.hint')}</p>
+      <canvas id="drawPad" class="draw-pad" width="600" height="600"></canvas>
+      <div style="height:12px"></div>
+      <div class="btn-row">
+        <button class="btn" data-act="drawClear" style="flex:0 0 auto" aria-label="${t('draw.clear')}">🧽</button>
+        <button class="btn" data-act="drawPaper" style="flex:0 0 auto">📝 ${t('draw.paper')}</button>
+        <button class="btn primary big" data-act="drawDone" ${tmp.drawn ? '' : 'disabled'}>${t('draw.done')} ✓</button>
+      </div>`;
+  }
+  function bindDraw() {
+    const c = document.getElementById('drawPad');
+    if (!c || c.dataset.bound) return;
+    c.dataset.bound = '1';
+    const ctx = c.getContext('2d');
+    const ink = '#f6e7c8';
+    ctx.fillStyle = '#0d1126'; ctx.fillRect(0, 0, c.width, c.height);
+    if (tmp.drawData) { const img = new Image(); img.onload = () => ctx.drawImage(img, 0, 0, c.width, c.height); img.src = tmp.drawData; }
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = ink; ctx.lineWidth = 12;
+    let drawing = false, last = null;
+    const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
+    c.addEventListener('pointerdown', e => {
+      drawing = true; last = pos(e);
+      try { c.setPointerCapture(e.pointerId); } catch (err) { /* ok */ }
+      ctx.beginPath(); ctx.arc(last[0], last[1], 6, 0, Math.PI * 2); ctx.fillStyle = ink; ctx.fill();
+    });
+    c.addEventListener('pointermove', e => {
+      if (!drawing) return;
+      const p = pos(e);
+      ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last = p;
+    });
+    const end = () => {
+      if (!drawing) return;
+      drawing = false;
+      tmp.drawData = c.toDataURL('image/jpeg', 0.85);
+      if (!tmp.drawn) { tmp.drawn = true; const b = $app.querySelector('[data-act="drawDone"]'); if (b) b.disabled = false; }
+    };
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => c.addEventListener(ev, end));
+  }
+  /** Small JPEG of the drawing for the game state. */
+  function drawingValue() {
+    const c = document.getElementById('drawPad');
+    if (!c || !tmp.drawn) return null;
+    const out = document.createElement('canvas'); out.width = out.height = 320;
+    out.getContext('2d').drawImage(c, 0, 0, 320, 320);
+    return out.toDataURL('image/jpeg', 0.75);
+  }
+  function submitNight(v) {
+    if (isAuto()) return finishAutoStep(v);
+    commit(g => W.submitStep(g, v));
+  }
+
   /** Werewolves may have to kill (setting); without a game master Cupid must choose. */
   function canSkip(cur, auto) {
     if (cur.id === 'werwoelfe' && game.settings.wolvesMustKill) return false;
@@ -561,6 +631,7 @@
   function stepInput(cur, auto) {
     const def = cur.def;
     const info = cur.info ? `<div class="info-line">${esc(m(cur.info))}</div>` : '';
+    if (def.kind === 'draw') return drawPad();
     if (def.kind === 'yesno') {
       return `${info}
         <div class="btn-row">
@@ -589,7 +660,7 @@
           ${tmp.heal || tmp.poison ? t('common.confirm') + ' ✓' : t('night.noPotion') + ' →'}
         </button>`;
     }
-    const need = def.count;
+    const need = cur.count || def.count;
     const res = !auto && tmp.sel.length === need ? W.stepResult(game, cur.id, tmp.sel) : null;
     return `${info}
       <p class="muted small" style="margin:0 0 8px">${need === 1 ? t('night.pickOne') : t('night.pickN', { n: need, k: tmp.sel.length })}</p>
@@ -773,6 +844,8 @@
         </div>
         ${intro ? `<p class="sub">${intro}</p>` : ''}
         ${newsBlock()}
+        ${game.news.sign && String(game.news.sign).startsWith('data:image/') ? `
+          <div class="sign-box"><div class="sub-label">✍️ ${t('draw.signTitle')}</div><img src="${esc(game.news.sign)}" alt="${t('draw.signTitle')}"></div>` : ''}
       </section>
       <div class="btn-col actions">${buttons}</div>`;
   }
@@ -826,6 +899,12 @@
     game.players.filter(p => p.alive && p.flags.noVote).forEach(p => r.push(t('day.noVote', { name: esc(p.name) })));
     const judge = W.alive(game).find(p => p.roleId === 'richter');
     if (judge && !game.p.richterUsed && !isAuto()) r.push(t('day.judge', { name: esc(judge.name) }));
+    // custom roles that act by day: reminder (without names when there is no game master)
+    [...new Set(game.players.filter(p => (W.ROLE[p.roleId] || {}).dayReminder).map(p => p.roleId))].forEach(rid => {
+      const R = I.role(rid);
+      if (isAuto()) r.push(t('day.customAuto', { emo: R.emoji, role: esc(R.name) }));
+      else game.players.filter(p => p.alive && p.roleId === rid).forEach(p => r.push(t('day.custom', { emo: R.emoji, role: esc(R.name), name: esc(p.name) })));
+    });
     return r.length ? `<div class="reminders">${r.map(x => `<div class="reminder">${x}</div>`).join('')}</div>` : '';
   }
 
@@ -1112,7 +1191,39 @@
       <p>${esc(R.desc)}</p>
       <p class="muted small"><em>${esc(other.desc)}</em></p>
       ${R.tip ? `<p class="info-line small">💡 ${esc(R.tip)}</p>` : ''}
+      ${r.custom && (setup.customRoles || []).some(d => d.id === id) ? `<div class="btn-row" style="margin-bottom:10px">
+        <button class="btn" data-act="customEdit" data-id="${id}">✏️ ${t('custom.edit')}</button>
+        <button class="btn danger" data-act="customDelete" data-id="${id}" style="flex:0 0 auto">🗑️</button></div>` : ''}
       <button class="btn block" data-act="closeModal">${t('common.close')}</button>`, 'role');
+  }
+
+  /** Form for a custom role (name, symbol, team, when to remind, description). */
+  function openCustomForm(id) {
+    const d = id ? (setup.customRoles || []).find(x => x.id === id) : null;
+    if (!tmp.custom || tmp.custom.id !== (id || null)) {
+      tmp.custom = { id: id || null, name: d ? d.name : '', emoji: d ? d.emoji : '🎭', team: d ? d.team : 'dorf', when: d ? d.when : 'night', desc: d ? d.desc : '' };
+    }
+    const c = tmp.custom;
+    openModal(`
+      ${modalHead(`🎭 ${id ? t('custom.edit') : t('custom.title')}`)}
+      <p class="muted small">${t('custom.hint')}</p>
+      <div class="row" style="margin:10px 0">
+        <input class="input emoji-input" id="cEmoji" value="${esc(c.emoji)}" maxlength="4" aria-label="${t('custom.emoji')}">
+        <input class="input" id="cName" value="${esc(c.name)}" maxlength="24" placeholder="${t('custom.namePh')}" aria-label="${t('custom.name')}">
+      </div>
+      <div class="setting"><span class="lbl">${t('custom.team')}</span>${seg('customSet', 'team', c.team, ['dorf', 'wolf', 'vampir', 'solo'].map(k => [k, TEAMS[k].emoji + ' ' + teamName(k)]))}</div>
+      <div class="setting"><span class="lbl">${t('custom.when')}</span>${seg('customSet', 'when', c.when, [['night', '🌙 ' + t('custom.whenNight')], ['first', '🌘 ' + t('custom.whenFirst')], ['day', '☀️ ' + t('custom.whenDay')], ['none', t('custom.whenNone')]])}</div>
+      <p class="sub-label">${t('custom.desc')}</p>
+      <textarea class="input" id="cDesc" rows="3" maxlength="240" placeholder="${t('custom.descPh')}">${esc(c.desc)}</textarea>
+      <div style="height:14px"></div>
+      <div class="btn-row"><button class="btn" data-act="closeModal">${t('common.cancel')}</button><button class="btn primary" data-act="customSave">${t('custom.save')} ✓</button></div>`, 'custom');
+  }
+  function readCustomForm() {
+    const v = id => (document.getElementById(id) || {}).value;
+    if (!tmp.custom) return;
+    tmp.custom.name = (v('cName') || '').trim();
+    tmp.custom.emoji = (v('cEmoji') || '').trim() || '🎭';
+    tmp.custom.desc = (v('cDesc') || '').trim();
   }
 
   /** Home Assistant block of the settings (re-rendered on its own, so the dialog never flickers). */
@@ -1328,6 +1439,7 @@
       return;
     }
     if (view === 'reveal' || view === 'qrrole') bindCard();
+    if (view === 'game') bindDraw();
     if (view === 'reveal' && game.ui.stage === 'qr') drawQr();
     if (view === 'setup') { const inp = document.getElementById('playerInput'); if (inp && focusInput) { inp.focus(); focusInput = false; } }
     keepAwake(view === 'game' && game && game.screen !== 'over');
@@ -1349,6 +1461,7 @@
     clearAuto(); HA.restore();
     game = W.createGame(setup.players, setup.counts, setup.settings);
     game.ui = { idx: 0, stage: 'pass' };
+    game.customRoles = (setup.customRoles || []).filter(d => setup.counts[d.id]);
     history = [];
     saveGame(); view = 'reveal'; tmp = freshTmp(); closeModal(); render();
   }
@@ -1402,7 +1515,7 @@
     // --- Night
     pick(d) {
       const cur = game.screen === 'night' ? W.currentStep(game) : null;
-      let max = cur ? cur.def.count : 1;
+      let max = cur ? cur.count : 1;
       if (game.screen === 'interrupt' && game.queue[0].type === 'akw') max = 2;
       const i = tmp.sel.indexOf(d.id);
       if (i >= 0) tmp.sel.splice(i, 1);
@@ -1438,6 +1551,29 @@
       narrateLine('nightStart').then(() => later(1500, () => { tmp.auto = { phase: 'call', started: true }; autoController(); render(); }));
     },
     autoResultOk() { finishAutoStep(tmp.auto.value); },
+    drawClear() { tmp.drawData = null; tmp.drawn = false; render(); },
+    drawPaper() { submitNight(null); },
+    drawDone() { const v = drawingValue(); if (v) submitNight(v); },
+    customNew() { tmp.custom = null; openCustomForm(null); },
+    customEdit(d) { tmp.custom = null; openCustomForm(d.id); },
+    customSet(d) { readCustomForm(); tmp.custom[d.key] = d.val; openCustomForm(tmp.custom.id); },
+    customSave() {
+      readCustomForm();
+      const c = tmp.custom;
+      if (!c.name) return toast('⚠️ ' + t('custom.needName'));
+      const def = { id: c.id || 'c_' + Date.now().toString(36), name: c.name, emoji: c.emoji, team: c.team, when: c.when, desc: c.desc };
+      setup.customRoles = (setup.customRoles || []).filter(x => x.id !== def.id).concat([def]);
+      if (!c.id) setup.counts[def.id] = 1;
+      registerCustoms(); saveSetup(); tmp.custom = null; closeModal(); render();
+    },
+    customDelete(d) {
+      const R = W.ROLE[d.id];
+      confirmBox(t('custom.deleteQ', { name: R ? R.name : '' }), t('custom.delete'), () => {
+        setup.customRoles = (setup.customRoles || []).filter(x => x.id !== d.id);
+        delete setup.counts[d.id];
+        registerCustoms(); saveSetup(); render();
+      });
+    },
     loverPassLook() { A.fx('swoosh'); mutate(g => { g.night.pass.stage = 'look'; }); },
     loverPassNext() {
       tmp.auto = { phase: 'call', started: true };
