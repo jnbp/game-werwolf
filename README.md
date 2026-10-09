@@ -8,7 +8,10 @@ It runs entirely in the browser: no account, no server, the game state is stored
 
 ## Features
 
-- **33 roles** – from Villager to Serial Killer, with balanced suggestions and a balance bar per faction
+- **36 roles** – from Villager to Serial Killer, with balanced suggestions and a balance bar per faction
+- **Custom roles** – name, symbol, team and when to be called (every night, first night, by day); the app reminds the game master,
+  the rule itself is up to you
+- **Ghost Hand** draws its secret sign on the phone; the drawing is shown to everyone in the morning
 - **Two ways to play**
   - **With a game master** – one person leads and sees all roles
   - **Without a game master** – the phone lies in the middle and narrates; whoever is called taps secretly,

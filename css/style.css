@@ -464,3 +464,14 @@ body.auto-blank .game-head { opacity: .25; transition: opacity .6s; }
 /* No pull-to-refresh: pulling down must never reload the page (Chrome uses the root element) */
 html, body { overscroll-behavior-y: none; }
 .modal, .light-list { overscroll-behavior: contain; }
+/* New roles: custom role card, ghost hand drawing, morning sign */
+.custom-txt { color: var(--team-love); font-weight: 700; }
+.role-card.add-custom { align-items: center; justify-content: center; gap: 4px; min-height: 104px; border: 2px dashed var(--line-strong); background: transparent; color: var(--muted); font-weight: 700; text-align: center; }
+.role-card.add-custom .plus { font-size: 1.8rem; line-height: 1; color: var(--gold); }
+.role-card.add-custom:active { background: var(--gold-soft); }
+.emoji-input { width: 64px; flex: none; text-align: center; font-size: 1.4rem; padding: 8px; }
+textarea.input { resize: vertical; min-height: 80px; }
+.draw-pad { display: block; width: 100%; max-width: 360px; aspect-ratio: 1; margin: 0 auto; border-radius: 18px; border: 2px dashed rgba(240, 184, 90, .45); background: #0d1126; touch-action: none; cursor: crosshair; }
+.sign-box { margin-top: 14px; text-align: center; }
+.sign-box img { width: 100%; max-width: 340px; aspect-ratio: 1; border-radius: 18px; border: 2px solid rgba(240, 184, 90, .5); box-shadow: 0 0 40px rgba(240, 184, 90, .2); animation: popIn .6s cubic-bezier(.2, 1.3, .4, 1) both; }
+textarea { font: inherit; color: inherit; }
