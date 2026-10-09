@@ -263,6 +263,35 @@ function lynchByName(s, n) { s.round = Math.max(1, s.round); W.toDay(s); if (s.s
   W.takeOverAsGM(s);
   check('Takeover', s.settings.mode === 'gm');
 
+  // mayor succession: new election instead of a successor
+  s = game({ A: 'werwolf', B: 'dorfbewohner', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' }, { mayorSuccession: 'elect' });
+  night(s, { werwoelfe: ['F'] }); W.toDay(s); W.electMayor(s, id(s, 'B'));
+  W.lynch(s, id(s, 'B'));
+  check('Elect mode: no successor question', s.screen === 'afterLynch' && !s.queue.length, s.screen);
+  check('Elect mode: announced', s.news.lines.some(l => l.k === 'news.mayorElect'));
+  W.endDay(s); night(s, { werwoelfe: ['E'] }); W.toDay(s);
+  check('Elect mode: new election next day', s.screen === 'mayor', s.screen);
+  W.electMayor(s, id(s, 'C'));
+  check('Elect mode: flag cleared', !s.p.mayorElect && s.p.mayor === id(s, 'C'));
+  // default: the dying mayor names a successor
+  s = game({ A: 'werwolf', B: 'dorfbewohner', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner' });
+  s.round = 1; W.toDay(s); W.electMayor(s, id(s, 'B')); W.lynch(s, id(s, 'B'));
+  check('Choose mode: successor question', s.screen === 'interrupt' && s.queue[0].type === 'mayor');
+
+  // no game master: lovers learn about each other in a phone round in night 1
+  s = game({ A: 'amor', B: 'werwolf', C: 'dorfbewohner', D: 'dorfbewohner', E: 'dorfbewohner', F: 'dorfbewohner' }, { mode: 'auto' });
+  W.startNight(s);
+  W.submitStep(s, [id(s, 'B'), id(s, 'C')]);
+  check('Auto: lovers step follows Cupid', W.currentStep(s).id === 'liebende' && W.currentStep(s).status === 'active');
+  W.loverPassStart(s);
+  check('Auto: everyone is in the round', s.night.pass.list.length === 6);
+  check('Auto: lover sees partner', W.loverPassInfo(s, id(s, 'B')) === 'C' && W.loverPassInfo(s, id(s, 'C')) === 'B');
+  check('Auto: others see nothing', W.loverPassInfo(s, id(s, 'D')) === null);
+  let done = false; for (let i = 0; i < 6; i++) done = W.loverPassNext(s);
+  check('Auto: round ends after everyone', done);
+  W.submitStep(s, null);
+  check('Auto: night continues after the round', W.currentStep(s) && W.currentStep(s).id !== 'liebende');
+
   // balance bar with vampires
   const bp = W.balanceParts({ werwolf: 2, vampir: 1, seherin: 1, dorfbewohner: 4 });
   check('Balance knows vampires', bp.vampir > 0 && bp.wolf > 0 && bp.share > 0 && bp.share < 1);
@@ -296,7 +325,8 @@ function checkMsg(msg) {
         if ((counts[r] || 0) < max) { counts[r] = (counts[r] || 0) + 1; left--; }
       }
     }
-    const settings = { wolvesParity: Math.random() < .5, callDeadRoles: Math.random() < .5, seerMode: pick(['team', 'role']), revealRoles: Math.random() < .8 };
+    const settings = { wolvesParity: Math.random() < .5, callDeadRoles: Math.random() < .5, seerMode: pick(['team', 'role']), revealRoles: Math.random() < .8,
+      mayorSuccession: pick(['choose', 'elect']), mode: pick(['gm', 'auto']) };
     const s = W.createGame(Array.from({ length: n }, (_, i) => 'S' + i), counts, settings);
     try {
       let steps = 0;

@@ -21,6 +21,8 @@
     seerMode: 'team',       // 'team' = werewolf yes/no, 'role' = exact role
     wolvesParity: true,     // evil wins at parity
     mayor: true,            // mayor election on day 1
+    mayorSuccession: 'choose', // 'choose' = the dying mayor names a successor, 'elect' = new election next day
+    wolvesMustKill: true,   // werewolves must pick a victim (no "no victim" button)
     dayMinutes: 5,
     narration: true,        // show narration texts
     mode: 'gm',             // 'gm' = with game master, 'auto' = the phone narrates
@@ -435,7 +437,11 @@
       if (child && !child.flags.wolf) { child.flags.wolf = true; child.flags.newWolf = true; say(s, 'news.wildTurned', { name: child.name }, true); }
     }
     // mayor
-    if (s.p.mayor === p.id) { s.p.mayor = null; if (alive(s).length) s.queue.push({ type: 'mayor', pid: p.id }); }
+    if (s.p.mayor === p.id) {
+      s.p.mayor = null;
+      if (s.settings.mayorSuccession === 'elect') { s.p.mayorElect = true; if (alive(s).length) say(s, 'news.mayorElect'); }
+      else if (alive(s).length) s.queue.push({ type: 'mayor', pid: p.id });
+    }
     // hunter & nuclear plant
     if (p.roleId === 'jaeger' && alive(s).length) s.queue.push({ type: 'jaeger', pid: p.id });
     if (p.roleId === 'akw' && alive(s).length) s.queue.push({ type: 'akw', pid: p.id, suggest: neighbours(s, p.id) });
@@ -529,12 +535,32 @@
   function toDay(s) {
     s.phase = 'day';
     s.day = { mode: 'talk', votes: {}, ballots: {}, protectedId: null, mayorVote: null, voteNo: 1, tied: null, pendingLynch: null, cleanerActive: false };
-    s.screen = (s.settings.mayor && !s.p.mayor && s.round === 1) ? 'mayor' : 'day';
     log(s, 'log.dayStart', { n: s.round });
+    s.screen = mayorDue(s) ? 'mayor' : 'day';
+  }
+  const mayorDue = s => !!(s.settings.mayor && !s.p.mayor && (s.round === 1 || s.p.mayorElect));
+
+  /* Without a game master the lovers step becomes a pass round in the night:
+     everyone opens their eyes, the phone goes around once and each player looks alone.
+     The lovers see their partner, everyone else sees "nothing new" – same steps for all. */
+  function loverPassStart(s) {
+    s.night.pass = { list: alive(s).map(p => p.id), idx: 0, stage: 'hand' };
+  }
+  /** What the given player sees in the pass round: the partner's name or null. */
+  function loverPassInfo(s, pid) {
+    if (!s.p.lovers.includes(pid)) return null;
+    return name(s, s.p.lovers.find(x => x !== pid));
+  }
+  /** Next player; returns true when everyone has looked. */
+  function loverPassNext(s) {
+    const ps = s.night.pass;
+    ps.idx += 1; ps.stage = 'hand';
+    return ps.idx >= ps.list.length;
   }
 
   function electMayor(s, id) {
     if (id) { s.p.mayor = id; log(s, 'log.mayor', { name: name(s, id) }); }
+    s.p.mayorElect = false;
     s.screen = 'day';
   }
 
@@ -682,7 +708,7 @@
     validateSetup, suggestRoles, balance, balanceParts, createGame, shuffle,
     startNight, currentStep, stepResult, submitStep, stepStatus,
     interruptTargets, resolveInterrupt, continueFlow, checkWin,
-    toDay, electMayor, blumenkindProtect, voteCandidates, voteTotals, voters, startVote, castBallot, tallyBallots, resolveVote, lynch, cleanerDecide, noLynch, richterSecondVote, endDay,
+    toDay, electMayor, loverPassStart, loverPassInfo, loverPassNext, blumenkindProtect, voteCandidates, voteTotals, voters, startVote, castBallot, tallyBallots, resolveVote, lynch, cleanerDecide, noLynch, richterSecondVote, endDay,
     gmKill, gmRevive, takeOverAsGM
   };
   global.WW = API;
